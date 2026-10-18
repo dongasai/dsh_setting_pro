@@ -18,6 +18,7 @@ import {
 	createIdleWatch,
 	createMachineStore,
 	createRestartControl,
+	agentIdOf,
 	createToolGate,
 	describeAgentTools,
 	createVersionChecker,
@@ -52,6 +53,17 @@ import {
 	UNIT_ENV,
 	VERSION_TTL_MS,
 } from './index.js';
+
+// —— 探针必须与「跑它这台机器此刻的状态」无关 ——
+// apply() 会读 `$DSH_HOME/setting-pro.json` 里的 `agentTools` 决定要不要注册那三个重启工具。
+// 以前它读的是**真实**文件：用户在界面上把开关关掉（2026-10-18 实测 `agentTools:false`），
+// 探针就一个工具都注册不上，组 7 拿 `fake.tools.get('dsh_restart_status')` 直接 TypeError 崩掉 ——
+// 「测试跑不跑得过」变成了「用户界面上勾没勾」，这是错的。这里把 DSH_HOME 指到仓库里的临时目录。
+// index.js 顶层不读 env（`stateFilePath()` 在调用时才读），所以在 import 之后、任何 apply 之前设好即可。
+const probeHome = fileURLToPath(new URL('./.probe-env/', import.meta.url));
+mkdirSync(probeHome, { recursive: true });
+rmSync(probeHome + '/setting-pro.json', { force: true });
+process.env.DSH_HOME = probeHome;
 
 let passed = 0;
 const failures = [];
@@ -332,8 +344,11 @@ async function callRoute(routes, path, options = {}) {
 }
 
 const fake = fakeHostCtx({
+	// ⚠️ 真实 `ctx.agents.list()` 的条目形状：id 挂在 `agent.id` 上（官方 enter() 断言
+	// `agent.id === agent.session.id`），**没有 `agent.sessionId`**。以前这份假数据两个都给，
+	// 比真实更宽松，于是代码里 `String(agent.sessionId)` 的 bug 探针看不见（2026-10-18）。
 	running: [{
-		sessionId: 'session-x',
+		id: 'session-x',
 		status: 'running',
 		session: { id: 'session-x', header: { cwd: '/data/ai/dsh/dsh_setting_pro/' } }
 	}],
@@ -381,7 +396,7 @@ deepEqual('route status: runningSessions 带工作区与标题', snapshot.runnin
 // 标题缓存：两次连读 `/status` 不该把 sessionTitle 折两次（它每次要扫全量事件）。
 let titleCalls = 0;
 const countingFake = fakeHostCtx({
-	running: [{ sessionId: 's-cache', status: 'running', session: { id: 's-cache', header: { cwd: '/data/ai/x' } } }],
+	running: [{ id: 's-cache', status: 'running', session: { id: 's-cache', header: { cwd: '/data/ai/x' } } }],
 	get: (name) => (name === 'sessionTitle' ? {
 		get: () => {
 			titleCalls += 1;
@@ -395,7 +410,70 @@ await callRoute(countingFake.routes, ROUTE_STATUS);
 equal('route status: 标题按 sessionId 缓存（TTL 内两次读只折一次）', titleCalls, 1);
 for (const dispose of countingFake.disposers) dispose();
 
-const bareFake = fakeHostCtx({ running: [{ sessionId: 'session-bare', status: 'running' }] });
+// —— 回归（2026-10-18 用户实测的 bug）：四个在跑的会话悬停显示同一个标题 ——
+// 根因：`ctx.agents.list()` 的条目上 id 挂在 `agent.id`，没有 `agent.sessionId`；
+// 早先 `String(agent.sessionId)` 让每个会话的缓存 key 都变成字符串 "undefined"，
+// 于是第一个会话折出来的标题被复用到全部会话（工作区不缓存，所以工作区看着是对的、标题全一样）。
+{
+	const titlesById = new Map([
+		['sess-a', '把尺寸调大'],
+		['sess-b', '修 sidebar 终端'],
+		['sess-c', '整理 issue']
+	]);
+	const multiFake = fakeHostCtx({
+		running: [...titlesById.keys()].map((id) => ({
+			id,
+			status: 'running',
+			session: { id, header: { cwd: '/data/ai/dsh/' + id } }
+		})),
+		get: (name) => (name === 'sessionTitle' ? {
+			get: (session) => ({ title: titlesById.get(String(session?.id) ?? '') ?? '' })
+		} : undefined)
+	});
+	apply(multiFake.ctx);
+	const multi = JSON.parse((await callRoute(multiFake.routes, ROUTE_STATUS)).body);
+	equal('多会话: 三个都在跑', multi.runningCount, 3);
+	deepEqual('多会话: 每个会话拿到自己的标题（缓存 key 不串）',
+		multi.runningSessions.map((item) => item.title), ['把尺寸调大', '修 sidebar 终端', '整理 issue']);
+	deepEqual('多会话: sessionId 是真实 id（不是字符串 "undefined"）',
+		multi.runningSessions.map((item) => item.sessionId), ['sess-a', 'sess-b', 'sess-c']);
+	check('多会话: 没有任何一项的 id 是 "undefined"',
+		!JSON.stringify(multi.runningSessions).includes('undefined'));
+	// 悬停文本逐行也必须是三个不同的会话（工作区名 = basename(cwd) = sess-a/b/c）
+	equal('多会话: 工具输出里三个会话各自成行',
+		multi.runningSessions.map((item) => describeRunningSession(item)).join(' | '),
+		'sess-a · 把尺寸调大（sess-a） | sess-b · 修 sidebar 终端（sess-b） | sess-c · 整理 issue（sess-c）');
+	for (const dispose of multiFake.disposers) dispose();
+}
+// 没有可用 id 的条目（异常形状）：**不能进缓存**，否则不同会话共用一个槽、标题互串。
+{
+	let noIdCalls = 0;
+	const noIdFake = fakeHostCtx({
+		running: [
+			{ status: 'running', session: { header: { cwd: '/data/ai/x' } } },
+			{ status: 'running', session: { header: { cwd: '/data/ai/y' } } }
+		],
+		get: (name) => (name === 'sessionTitle' ? {
+			get: (session) => {
+				noIdCalls += 1;
+				return { title: 't' + String(noIdCalls) };
+			}
+		} : undefined)
+	});
+	apply(noIdFake.ctx);
+	const first = JSON.parse((await callRoute(noIdFake.routes, ROUTE_STATUS)).body);
+	const second = JSON.parse((await callRoute(noIdFake.routes, ROUTE_STATUS)).body);
+	equal('无 id 条目: sessionId 留空而不是 "undefined"', first.runningSessions[0].sessionId, '');
+	check('无 id 条目: 两个会话的工作区各自正确（不共享缓存槽）',
+		first.runningSessions.map((item) => item.workspace).join(',') === 'x,y',
+		JSON.stringify(first.runningSessions));
+	check('无 id 条目: 标题不互串（第二次读仍各折各的）',
+		second.runningSessions.map((item) => item.title).join(',') !== second.runningSessions[0].title + ',' + second.runningSessions[0].title,
+		JSON.stringify(second.runningSessions));
+	for (const dispose of noIdFake.disposers) dispose();
+}
+
+const bareFake = fakeHostCtx({ running: [{ id: 'session-bare', status: 'running' }] });
 apply(bareFake.ctx);
 const bareSnapshot = JSON.parse((await callRoute(bareFake.routes, ROUTE_STATUS)).body);
 deepEqual('route status: agent 没有 session 元信息时字段留空，不报错', bareSnapshot.runningSessions,
@@ -509,6 +587,7 @@ equal('卸载: 三个工具都被注销（不留悬空注册）', fake.tools.siz
 // #endregion
 
 // #region 8. 浏览器半边冒烟：假 React + 假 window，把组件树搭出来（不需要浏览器）
+
 
 /** 假 React：只要能建元素、能过 hooks，就足以把组件调一遍。 */
 const fakeReact = {
@@ -737,7 +816,7 @@ globalThis.document = fakeDocument;
 /** 假 fetch：只认本插件那几条路由，用于让「机器名标签」真的跑起来。 */
 const machineRouteState = { name: '测试机' };
 /** 假 `/status` 的忙闲：探针改它 + 手动触发轮询，就能验「运行中」指示的出现/消失。 */
-const statusRouteState = { busy: false, runningCount: 0, sessions: [] };
+const statusRouteState = { busy: false, runningCount: 0, sessions: [], armed: false };
 globalThis.fetch = async (url) => {
 	const target = String(url);
 	const json = (payload) => ({
@@ -753,7 +832,8 @@ globalThis.fetch = async (url) => {
 			machineName: machineRouteState.name,
 			busy: statusRouteState.busy,
 			runningCount: statusRouteState.runningCount,
-			runningSessions: statusRouteState.sessions
+			runningSessions: statusRouteState.sessions,
+			armed: statusRouteState.armed
 		});
 	}
 	if (target.startsWith('/setting-pro/version')) return json({ current: '0.2.0-rc.2', tags: [], newest: null, newer: null });
@@ -873,6 +953,16 @@ const brandMarkEntry = brandEntries().find((entry) => entry.options.name === 'si
 const brandNameTree = brandNameEntry === undefined ? null : brandNameEntry.component();
 equal('品牌区: 正文渲染出机器名', brandNameTree === null ? null : brandNameTree.children[0], '测试机');
 equal('品牌区: 标记渲染为空（logo 让位给名字）', brandMarkEntry === undefined ? 'missing' : brandMarkEntry.component(), null);
+// 字号是纯 CSS（注入的字符串），假 DOM 不看样式，渲染层测不到 —— 用源码断言钉住用户
+// 明确要过的两个值（2026-10-18：机器名 20px、状态 chip 16px）。行高也被钉住：
+// 官方 _brandName / _brandIdentity 都写死 height:24px，行高给超了会把那一行撑变形。
+check('品牌区: 机器名字号 20px（用户指定）', /\.dspro_brandName\{[^}]*font-size:20px/.test(clientSource));
+// min-width:0 不是装饰：flex 项默认 min-width:auto 会拒绝收缩到内容以下，
+// 那时 ellipsis 不生效、浏览器从 logoRow 的 overflow 端裁掉**名字开头**。
+check('品牌区: 机器名允许收缩（min-width:0 + shrink 1），否则长名字会被裁头而不是省略号',
+	/\.dspro_brandName\{[^}]*min-width:0[^}]*flex:0 1 auto/.test(clientSource));
+check('品牌区: 机器名行高不超过官方 24px 行盒', /\.dspro_brandName\{[^}]*line-height:24px/.test(clientSource));
+check('运行指示: chip 字号 16px（用户指定）', /RUN_CLASS \+ '\{[^']*font-size:16px[^']*line-height:20px/.test(clientSource));
 const findLabel = () => fakeDocument.body.querySelectorAll('.dspro_machine')[0] ?? null;
 check('品牌区: 顶替成功时不再画 DOM 兜底那一行（避免重复）', findLabel() === null);
 
@@ -908,6 +998,43 @@ check('运行指示: 空闲时仍然显示（不是消失）', idleNode !== null
 equal('运行指示: 空闲态 data-state', idleNode === null ? null : idleNode.getAttribute('data-state'), 'idle');
 equal('运行指示: 空闲态文案', idleNode === null ? null : idleNode.querySelector('.dspro_runLabel').textContent, '空闲');
 equal('运行指示: 空闲态悬停', idleNode === null ? null : idleNode.getAttribute('title'), '当前没有会话在运行');
+
+// —— 排程感叹号（2026-10-18 用户要求：排程重启时，在「运行中」后面加感叹号）——
+// 此刻是空闲态（busy=false / count=0 / sessions=[]），**只把 armed 翻成 true 再轮询**：
+// 这正是最容易踩的短路陷阱 —— 若 set() 只比 busy/count/sessions，这一帧会被判成「没变化」而丢弃，
+// 感叹号要等到别的东西变了才出现。
+statusRouteState.armed = true;
+if (typeof poll === 'function') poll();
+await new Promise((resolve) => setTimeout(resolve, 250));
+const armedNode = findRun();
+check('排程: 空闲但已排程时仍然画（不撤掉）', armedNode !== null);
+equal('排程: data-armed 标成 1', armedNode === null ? null : armedNode.getAttribute('data-armed'), '1');
+const bangNode = armedNode === null ? null : armedNode.querySelector('.dspro_runBang');
+check('排程: 感叹号出现（单独 span，才能只给它 warn 色）', bangNode !== null);
+equal('排程: 感叹号文本是 !', bangNode === null ? null : bangNode.textContent, '!');
+equal('排程: 感叹号对读屏隐藏（含义已在悬停文本里）', bangNode === null ? null : bangNode.getAttribute('aria-hidden'), 'true');
+check('排程: 悬停补一行说明（空闲态也要看得见排程）',
+	armedNode !== null && String(armedNode.getAttribute('title')).includes('已排程'));
+equal('排程: 空闲态文案没被感叹号污染（还是「空闲」）',
+	armedNode === null ? null : armedNode.querySelector('.dspro_runLabel').textContent, '空闲');
+// 忙时 + 排程：感叹号与计数共存，悬停既有明细也有排程行
+statusRouteState.busy = true;
+statusRouteState.runningCount = 2;
+if (typeof poll === 'function') poll();
+await new Promise((resolve) => setTimeout(resolve, 250));
+const busyArmed = findRun();
+check('排程: 忙时感叹号也在', busyArmed !== null && busyArmed.querySelector('.dspro_runBang') !== null);
+equal('排程: 忙时文案仍是运行中 ×2',
+	busyArmed === null ? null : busyArmed.querySelector('.dspro_runLabel').textContent, '运行中 ×2');
+// 取消排程：只翻 armed 回 false，感叹号必须立刻消失（同样不能被短路吞掉）
+statusRouteState.armed = false;
+if (typeof poll === 'function') poll();
+await new Promise((resolve) => setTimeout(resolve, 250));
+const disarmed = findRun();
+check('排程: 取消后感叹号移除（不是留着当装饰）', disarmed !== null && disarmed.querySelector('.dspro_runBang') === null);
+// 感叹号只用确认存在的主题 token，不写死色值
+check('排程: 感叹号用 warn 主题 token（不写死色值）',
+	clientSource.includes("color:var(--dsw-alias-state-warn-primary)") && !/\.dspro_runBang\{[^}]*#[0-9a-f]{3,6}/i.test(clientSource));
 
 // 悬停明细：带工作区/会话标题
 statusRouteState.busy = true;
@@ -1047,6 +1174,13 @@ equal('describeRunningSession: 工作区 · 标题（id）',
 equal('describeRunningSession: 只有工作区', describeRunningSession({ sessionId: 's1', workspace: 'game', title: '' }), 'game（s1）');
 equal('describeRunningSession: 只有标题', describeRunningSession({ sessionId: 's1', workspace: '', title: '聊天' }), '聊天（s1）');
 equal('describeRunningSession: 什么都没有就退回 id', describeRunningSession({ sessionId: 's1' }), 's1');
+// 取会话 id 的判据（真实条目只有 `id`；`session.id` 是兜底；两者都没有必须给空串）
+equal('agentIdOf: 用 agent.id（真实字段）', agentIdOf({ id: 'a1', session: { id: 'a1' } }), 'a1');
+equal('agentIdOf: 没有 id 时退到 session.id', agentIdOf({ session: { id: 'a2' } }), 'a2');
+equal('agentIdOf: 只有旧的 sessionId 字段 → 空串（不再拿它当 id）', agentIdOf({ sessionId: 'a3' }), '');
+equal('agentIdOf: 什么都没有 → 空串（绝不能是字符串 undefined）', agentIdOf({}), '');
+equal('agentIdOf: null 条目 → 空串', agentIdOf(null), '');
+equal('agentIdOf: id 不是字符串 → 空串（不 String() 造出 "undefined"）', agentIdOf({ id: undefined }), '');
 equal('describeRunningSession: 坏输入不抛', describeRunningSession(null), 'unknown');
 // #endregion
 
@@ -1355,6 +1489,9 @@ equal('store: 文件里没有 agentTools 键时用缺省（开）', createMachin
 check('缺省值是开（不改既有行为：0.3.0 起工具一直注册着）', AGENT_TOOLS_DEFAULT === true);
 
 // #endregion
+
+// 环境隔离本身也要被钉住：一旦有人删了上面那几行，这里就红。
+check('探针: DSH_HOME 指向仓库临时目录（不读真实 ~/.dsh）', stateFilePath().startsWith(probeHome), stateFilePath());
 
 // #region 13. 重启工具是否开放给 agent（网关注册 / 即时注销 / 路由契约）
 

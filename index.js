@@ -736,6 +736,23 @@ function sleep(ms) {
 }
 
 /**
+ * 一个 agent 条目的会话 id：优先 `agent.id`（官方权威字段），退到 `agent.session.id`。
+ *
+ * ⚠️ `ctx.agents.list()` 的条目上**没有 `agent.sessionId`** —— 官方 `enter()` 里断言
+ * `agent.id === agent.session.id`。早先用 `String(agent.sessionId)` 会让每个会话都得到
+ * 字符串 `"undefined"`，标题缓存 key 全撞成一个 → 第一个会话的标题被复用到所有会话
+ * （2026-10-18 用户实测：四个会话悬停都显示 `/init-architect`）。
+ * 两个字段都拿不到时返回**空串**，调用方据此跳过缓存 —— 宁可多折一次标题，
+ * 也不能让不同会话共用一个缓存槽。
+ * @param agent - `ctx.agents.list()` 的一项。
+ * @returns 会话 id，或空串。
+ */
+export function agentIdOf(agent) {
+	const direct = agent?.id ?? agent?.session?.id;
+	return typeof direct === 'string' ? direct : '';
+}
+
+/**
  * 重启控制器：进程内单例，四条路由与三个工具共用它。
  *
  * 「先应答、后动手」是刻意的：`fire()` 只负责把临时单元交给 systemd，真正的
@@ -765,6 +782,7 @@ export function createRestartControl(ctx, options = {}) {
 	/** 会话标题缓存：sessionId → { at, title }。成本原因见 `runningSessions` 的注释。 */
 	const titleCache = new Map();
 
+
 	/** 仍在跑（`status === 'running'`）的会话 id。 */
 	const running = () => runningSessions().map((item) => item.sessionId);
 
@@ -788,7 +806,11 @@ export function createRestartControl(ctx, options = {}) {
 			const items = [];
 			for (const agent of agents) {
 				if (agent?.status !== 'running') continue;
-				const sessionId = String(agent.sessionId);
+				// ⚠️ 真实条目上的字段是 `agent.id`（官方 enter() 里断言 `agent.id === agent.session.id`），
+				// **没有 `agent.sessionId`**。早先写成 String(agent.sessionId) 会让每个会话都得到字符串
+				// "undefined"：标题缓存 key 全撞成同一个 → 第一个会话的标题被复用到所有会话
+				// （2026-10-18 用户实测四个会话都显示 /init-architect）。
+				const sessionId = agentIdOf(agent);
 				let workspace = '';
 				let title = '';
 				try {
@@ -801,13 +823,16 @@ export function createRestartControl(ctx, options = {}) {
 					/* 没有 session/header：工作区留空 */
 				}
 				try {
-					const cached = titleCache.get(sessionId);
+					// 没有可靠 id 就**不读也不写缓存**：宁可这次多折一次标题，
+					// 也不能让多个会话共用一个缓存槽。
+					const cacheable = sessionId !== '';
+					const cached = cacheable ? titleCache.get(sessionId) : undefined;
 					if (cached !== undefined && now - cached.at < TITLE_TTL_MS) {
 						title = cached.title;
 					} else {
 						const snapshot = titles?.get?.(agent.session);
 						title = typeof snapshot?.title === 'string' ? snapshot.title : '';
-						titleCache.set(sessionId, { at: now, title });
+						if (cacheable) titleCache.set(sessionId, { at: now, title });
 					}
 				} catch {
 					/* sessionTitle 不在、或 session 不是它的对象：标题留空，不猜 */
@@ -816,7 +841,7 @@ export function createRestartControl(ctx, options = {}) {
 			}
 			// 清掉已经不在了的会话，别让缓存无限长。
 			if (titleCache.size > items.length) {
-				const live = new Set(items.map((item) => item.sessionId));
+				const live = new Set(items.map((item) => item.sessionId).filter((id) => id !== ''));
 				for (const key of [...titleCache.keys()]) if (!live.has(key)) titleCache.delete(key);
 			}
 			return items;

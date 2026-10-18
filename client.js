@@ -100,6 +100,8 @@ window.__ModuleLoader__.load({
 		/** 「运行中」指示的类名（挂在品牌身份后面，与 orca 皮肤同一个位置）。 */
 		const RUN_CLASS = 'dspro_run';
 		const RUN_LABEL_CLASS = 'dspro_runLabel';
+		/** 排程标记那个感叹号（单独一个 span，才能只给它 warn 色）。 */
+		const RUN_BANG_CLASS = 'dspro_runBang';
 		const RUN_DOT_CLASS = 'dspro_runDot';
 		/** 为这个指示轮询 `/status` 的间隔（设置页自己还有 2s 的轮询，这里够用就好）。 */
 		const RUN_POLL_MS = 5000;
@@ -274,6 +276,8 @@ window.__ModuleLoader__.load({
 			busy: false,
 			runningCount: 0,
 			sessions: [],
+			/** 是否已排程「空闲后重启」。未知（还没读到）按 false：不猜一个感叹号给用户。 */
+			armed: false,
 			/** 第一次成功读到 `/status` 之前是 false：状态未知就不画，别猜一个「空闲」给用户。 */
 			known: false,
 			listeners: new Set(),
@@ -282,6 +286,7 @@ window.__ModuleLoader__.load({
 					busy: busyStore.busy,
 					runningCount: busyStore.runningCount,
 					sessions: busyStore.sessions,
+					armed: busyStore.armed,
 					known: busyStore.known
 				};
 			},
@@ -293,11 +298,15 @@ window.__ModuleLoader__.load({
 				const busy = next !== null && next.busy === true;
 				const count = next !== null && typeof next.runningCount === 'number' ? next.runningCount : 0;
 				const sessions = next !== null && Array.isArray(next.sessions) ? next.sessions : [];
+				const armed = next !== null && next.armed === true;
+				// ⚠️ `armed` 必须一起比：只比 busy/count/sessions 的话，「点了空闲后重启、但此刻
+				// 会话状态没变」那一帧会被短路掉，感叹号要等下一次别的字段变化才出现。
 				if (busyStore.known === true && busy === busyStore.busy && count === busyStore.runningCount
-					&& signatureOf(sessions) === busyStore._signature()) return;
+					&& armed === busyStore.armed && signatureOf(sessions) === busyStore._signature()) return;
 				busyStore.busy = busy;
 				busyStore.runningCount = count;
 				busyStore.sessions = sessions;
+				busyStore.armed = armed;
 				busyStore.known = true;
 				for (const listener of [...busyStore.listeners]) listener(busyStore.get());
 			},
@@ -367,15 +376,30 @@ window.__ModuleLoader__.load({
 			'.dspro_input:focus{outline:none;border-color:var(--dsw-alias-label-primary-bluish)}',
 			// 左上角 logo 下面那一行机器名：**兜底**用（槽位占位失败时才显示）。
 			'.' + MACHINE_CLASS + '{box-sizing:border-box;color:var(--dsw-alias-label-tertiary);padding:0 14px 6px 14px;font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;-webkit-user-select:none}',
-			// 顶掉官方品牌区后，那一行字就是「logo」本身：跟侧边栏标题同级，明显一点。
-			'.dspro_brandName{color:var(--dsw-alias-label-primary);font-size:16px;font-weight:600;line-height:24px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}',
-			// 「运行中」小药丸：只在忙时出现，挂在品牌身份后面（logo 后面）。
-			'.' + RUN_CLASS + '{box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:6px;padding:1px 6px;border-radius:999px;background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary);font-size:10px;font-weight:600;line-height:14px;white-space:nowrap;user-select:none;-webkit-user-select:none}',
-			'.' + RUN_DOT_CLASS + '{width:5px;height:5px;border-radius:50%;background:currentColor;animation:dsproRunPulse 1.4s ease-in-out infinite}',
+			// 顶掉官方品牌区后，那一行字就是「logo」本身：用户要 20px（2026-10-18）。
+			// 行高**只给 24px**（不是 28px）：官方 `_brandName`/`_brandIdentity` 都写死 `height:24px`
+			// 且 `align-items:center`，超过就会把这一行的行盒撑高。实测官方自己的字号是 18px/24px，
+			// 我们 20px 塞在 24px 行盒里不会裁（容器不是 overflow:hidden），只是上下没有余量。
+			// logoRow 是 `height:60px; padding:8px 0`（净 44px），竖向装得下。
+			// **横向装不下，所以 `min-width:0` 是必需的、不是装饰**：官方侧栏 188px、logoRow 净宽 ≈184
+			// （`justify-content:flex-end` + `overflow:hidden`），而同一行里还要放状态 chip 与收起按钮
+			// （chip 16px 下「空闲」≈66px、「运行中 ×4」≈115px，加 gap/按钮后留给名字的只有几十 px，
+			// 20px 的 `PVE-Work` 要 ≈90px）。flex 项默认 `min-width:auto` 会拒绝收缩到内容以下 ——
+			// 那时 `text-overflow:ellipsis` 根本不生效，浏览器改从 logoRow 的 overflow 端**裁掉名字开头**。
+			// 给了 `min-width:0`（并把 shrink 显式写回 1，别被别处的 `flex:none` 带歪）才会优雅省略号。
+			// chip 自己是 `flex:none`：宁可名字省略号，也不能把状态指示挤没 —— 它是「忙不忙」的唯一入口。
+			'.dspro_brandName{color:var(--dsw-alias-label-primary);font-size:20px;font-weight:600;line-height:24px;letter-spacing:.01em;min-width:0;flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}',
+			// 「运行中」药丸：挂在品牌身份后面（logo 后面）。用户要 16px（2026-10-18）；
+			// 字号一起放大的是行高/内距/圆点；行高只给 20px（药丸自己 2px 内距 = 24px 总高），
+// 因为官方 `_brandIdentity` 那个容器写死 `height:24px`，再高就会把整行撑变形。
+			'.' + RUN_CLASS + '{box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary);font-size:16px;font-weight:600;line-height:20px;white-space:nowrap;user-select:none;-webkit-user-select:none}',
+			'.' + RUN_DOT_CLASS + '{width:7px;height:7px;border-radius:50%;background:currentColor;animation:dsproRunPulse 1.4s ease-in-out infinite}',
 			// 空闲态：灰一点、不呼吸（只用确认存在的 token：state-idle 只有 primary 一档，背景留透明）。
 			'.' + RUN_CLASS + '[data-state="idle"]{background:transparent;color:var(--dsw-alias-state-idle-primary)}',
 			'.' + RUN_CLASS + '[data-state="idle"] .' + RUN_DOT_CLASS + '{animation:none;opacity:.55}',
 			'.' + RUN_LABEL_CLASS + '{font-variant-numeric:tabular-nums}',
+			// 排程感叹号：只用确认存在的 token（`--dsw-alias-state-warn-primary` 本机实测 11 处引用）。
+			'.' + RUN_BANG_CLASS + '{color:var(--dsw-alias-state-warn-primary);font-weight:700;line-height:1}',
 			'@keyframes dsproRunPulse{0%,100%{opacity:1}50%{opacity:.25}}',
 			'@media (prefers-reduced-motion:reduce){.' + RUN_DOT_CLASS + '{animation:none}}',
 			// 「性能与用量」那一行里我们自己的格子：外观对齐官方 pill（同一档字号、同样的 hover 面）。
@@ -487,6 +511,7 @@ window.__ModuleLoader__.load({
 				runLabel: '运行中',
 				runIdleLabel: '空闲',
 				runIdleHover: '当前没有会话在运行',
+				runArmedHover: '已排程：等所有会话空闲后重启 DSH',
 				modelGroupTitle: '输入框下方那一行',
 				modelGroupIntro: '官方在那里显示「N 轮 N 步 · tok/s」和 token 用量。本插件在同一行**右边并列**加一格：供应商 · 模型 · 思考档位；官方那两条原样保留。',
 				modelPillShow: '显示模型信息',
@@ -594,6 +619,7 @@ window.__ModuleLoader__.load({
 				machineBrandPending: 'Waiting for the sidebar to mount before deciding how to show it.',
 				runLabel: 'RUNNING',
 				runIdleLabel: 'IDLE',
+				runArmedHover: 'Scheduled: dsh restarts once every session is idle',
 				runIdleHover: 'No sessions are running',
 				modelGroupTitle: 'Composer stats row',
 				modelGroupIntro: 'The official UI shows “N turns N steps · tok/s” and token usage there. This plugin adds one cell on the SAME row, beside them: provider · model · thinking level — the two official pills stay untouched.',
@@ -1722,7 +1748,8 @@ window.__ModuleLoader__.load({
 				busyStore.set({
 					busy: result.payload.busy === true,
 					runningCount: typeof result.payload.runningCount === 'number' ? result.payload.runningCount : 0,
-					sessions: Array.isArray(result.payload.runningSessions) ? result.payload.runningSessions : []
+					sessions: Array.isArray(result.payload.runningSessions) ? result.payload.runningSessions : [],
+					armed: result.payload.armed === true
 				});
 			};
 
@@ -1850,7 +1877,7 @@ window.__ModuleLoader__.load({
 				}
 
 				// ② 「运行中」指示（只在有会话在跑、且品牌身份在时）
-				const { busy, runningCount, sessions, known } = busyStore.get();
+				const { busy, runningCount, sessions, armed, known } = busyStore.get();
 				// 状态未知（第一次读到之前）或侧边栏折叠：不画。
 				if (!known || identity === null) {
 					removeRun();
@@ -1871,12 +1898,27 @@ window.__ModuleLoader__.load({
 						: t('runIdleLabel');
 					const label = runNode.querySelector('.' + RUN_LABEL_CLASS);
 					if (label !== null && label.textContent !== text) label.textContent = text;
+					// 排程标记：文字后面一个橙色感叹号。单独一个 span 才能只给它 warn 色，
+					// 不污染忙时的绿底与闲时的灰字。**空闲但已排程也标** —— 那正是「马上要重启」，
+					// 不标就等于告诉用户没事发生。
+					const bang = runNode.querySelector('.' + RUN_BANG_CLASS);
+					if (armed && bang === null) {
+						const mark = document.createElement('span');
+						mark.className = RUN_BANG_CLASS;
+						mark.setAttribute('aria-hidden', 'true');
+						mark.textContent = '!';
+						runNode.append(mark);
+					} else if (!armed && bang !== null) {
+						bang.remove();
+					}
+					runNode.setAttribute('data-armed', armed ? '1' : '0');
+					const armedHint = armed ? '\n' + t('runArmedHover') : '';
 					if (busy) {
 						// 悬停：先一行计数，再每个在跑的会话一行「工作区 · 会话标题」；明细缺失就只留计数。
 						const hover = runningHoverText(sessions);
-						runNode.setAttribute('title', hover === '' ? text : text + '\n' + hover);
+						runNode.setAttribute('title', (hover === '' ? text : text + '\n' + hover) + armedHint);
 					} else {
-						runNode.setAttribute('title', t('runIdleHover'));
+						runNode.setAttribute('title', t('runIdleHover') + armedHint);
 					}
 					if (identity.nextElementSibling !== runNode) identity.insertAdjacentElement('afterend', runNode);
 				}
