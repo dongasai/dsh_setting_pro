@@ -33,7 +33,7 @@
 | Host | [index.js](index.js) | 七条 HTTP 路由（status/restart/schedule/cancel/version/machine/agent-tools）+ 三个模型工具（带**网关注册/注销**） + 重启引擎：用 **cgroup 叶子**判定宿主与单元名、空闲闸、把重启交给游离的 systemd 临时单元；状态里带 `startedAt`/`uptimeMs`/`dshVersion`/`machineName`/`runningSessions`（标题按 sessionId 缓存 30s，因为 `sessionTitle.get` 每次折全量事件）；版本检查查 npm dist-tags（缓存 6h）；机器名字与「开放给 agent」开关落 `$DSH_HOME/setting-pro.json`（一个文件两个键，共用同一套合并写） |
 | 浏览器 | [client.js](client.js) | 注入覆盖面板几何的 CSS、注册 `settings.section` 页（尺寸三行 + 「Host 运维」三行 + 「机器名字」行 + 「输入框下方那一行」开关 + 「DSH 版本」块）、轮询 Host 状态、打开页面即查一次版本、忙时二次确认、重连后按 `bootId` 判断「重启完成」、用**槽位 `priority: -1` 顶掉官方品牌区**显示机器名（顶不掉才退回 DOM 小字）、在品牌身份后面挂**常驻状态指示**（忙：`运行中 ×N` + 悬停「工作区 · 会话标题」；空闲：灰色 `空闲`），并在 `conversation.composer.dock`（list 槽）**并列**加一格只读的 `供应商 · 模型 · 思考档位`（数据来自可选服务 `modelDirectories`，退路是会话投影 `modelSelection`，那时显示内部 id 并如实说明） |
 | 装配 | [cordis.patch.yml](cordis.patch.yml) / [package.json](package.json) | patch 插入条目 `id: setting-pro`；`dsh.bundle.patch` 指向 patch，`dsh.client` 声明 `platform` / `immediately` / `inject` |
-| 探针 | [probe.mjs](probe.mjs) | `node probe.mjs`：纯逻辑 + 路由/工具契约 + 版本比较/更新检查（假 fetch、假时钟）+ 机器名清洗与存取（假 fs）+ 浏览器组件假渲染 + **品牌区顶替与 DOM 兜底两条路**（假槽位/假 DOM）+ **状态指示**（假 /status + 手动触发轮询：忙/空闲两态与悬停明细）+ **模型格**（三段拼法与 id 退路、开关落盘与关掉后不渲染、挂不上时异常不外抛）+ **重启工具网关**（即时注册/注销、两个字段分开报）+ 产物形状，共 338 项；**不会真的重启、不出网、不写真实状态文件** |
+| 探针 | [probe.mjs](probe.mjs) | `node probe.mjs`：纯逻辑 + 路由/工具契约 + 版本比较/更新检查（假 fetch、假时钟）+ 机器名清洗与存取（假 fs）+ 浏览器组件假渲染 + **品牌区顶替与 DOM 兜底两条路**（假槽位/假 DOM）+ **状态指示**（假 /status + 手动触发轮询：忙/空闲两态与悬停明细）+ **模型格**（三段拼法与 id 退路、开关落盘与关掉后不渲染、挂不上时异常不外抛）+ **重启工具网关**（即时注册/注销、两个字段分开报）+ 产物形状，共 344 项；**不会真的重启、不出网、不写真实状态文件** |
 
 浏览器半边仍由 `@deepseek-ai/dsh-client-modules` 扫描 Host loader 条目、挑出声明了 `dsh.client` 的包后送进浏览器 ——
 `index.js` 里 `export const inject` / `apply` 的**存在本身**就是那条 loader 条目。
@@ -66,7 +66,7 @@ graph TD
     DOCK -->|"slots.register(composer.dock, id=model-usage)"| C
     DOCK -.->|"ctx.get('modelDirectories')（可选）"| MD["官方模型目录服务"]
     DOCK -.->|"useProjection('modelSelection')"| DP["会话投影（只有 id）"]
-    H --> VN["resolveDshVersion（argv[1] 往上找 dsh 包）"]
+    H --> VN["resolveDshVersion（先 realpath(argv[1]) 再往上找 dsh 包）"]
     H --> VC["npm dist-tags → summariseVersions<br/>所有 tag 取最高（不只 latest）"]
     H --> D["describeHost：cgroup 叶子 .service<br/>→ 支持 + 单元名（不看父进程 comm）"]
     H --> I["空闲闸：agents.list() 全 idle 且静默 10s"]
@@ -94,8 +94,8 @@ graph TD
 | --- | --- | --- |
 | [index.js](index.js) | Host 半边 | `parseServiceUnit` / `resolveUnit` / `describeHost`（**能不能重启的判据**）/ `detectSupervisor`（仅展示用）/ `restartUnitArgv` / `createIdleWatch` / `formatDuration` / `parseVersion` / `compareVersions` / `resolveDshVersion` / `summariseVersions` / `createVersionChecker` / `stateFilePath` / `sanitizeMachineName` / `createMachineStore` / **`describeRunningSession`**（纯函数，探针直接测）、`runningSessions()`（`basename(header.cwd)` + 可选 `sessionTitle` + `TITLE_TTL_MS` 缓存）、`createRestartControl`（可注入 `machine` store，探针用假 fs）、`registerRoutes`、**`createToolGate`（网关注册/注销 + 实时视图）**、**`describeAgentTools`**（纯函数）、`registerTools`（改收 `register` 回调）、`inject`、`apply` |
 | [client.js](client.js) | 浏览器半边 | `PANEL_SELECTOR`、`DEFAULTS`/`LIMITS`/`STEP`、`PANEL_CSS`、`PAGE_CSS`、`DICT`、`panelRow`、`opsPost`、`opsSummary`、`formatUptime`/`formatStartedAt`/`formatTags`、`fetchVersion`/`fetchMachine`、`HostOps`、`MachineNameBlock`、`VersionBlock`、**`MachineBrandMark`/`MachineBrandName`（品牌区顶替）、`startBrandReplacement`（priority -1 占位/撤销）、`startMachineNameSource`（名字来源）、`startBrandExtras`（DOM 兜底行 + 运行指示）、`startBusySource`/`busyStore`（状态源，含 `known`「未知不画」）、`runningHoverText`/`signatureOf`、`fetchStatus`**、`useMachineName`、**`describeModelState`/`selectionOfProjection`（纯函数，探针直接测）、`modelPillStore`（开关 + localStorage）、`createModelStoreResolver`（带缓存的可选服务解析）、`mountModelPill`（list 槽并列注册 + 回调内 try）、`ModelUsagePill`/`ModelPillBlock`**、**`agentToolsSummary`/`agentToolsClass`（「开放给 agent」那行的文案与配色）**、`AdvancedSection`、`apply`、`probe`（仅给探针的纯件导出） |
-| [probe.mjs](probe.mjs) | 静态回归探针 | **338 项 / 16 类**，写在 15 个 `#region` 区块里（`grep -c '^// #region' probe.mjs` → 15）：cgroup 解析、supervisor 探测、单元优先级、命令构造、空闲状态机、产物形状、路由/工具契约、浏览器组件假渲染（含**品牌区顶替与 DOM 兜底两条路**、**状态指示两态与悬停明细**）、宿主判据（describeHost）、最后启动时间、版本比较与更新检查（假 fetch/假时钟）、机器名字（假 fs）、**重启工具网关**（即时注册/注销、两个字段分开报）、**模型格**（三段拼法与内部 id 退路、开关落盘、注册抛错不外抛） |
-| [IMPLEMENTATION.md](IMPLEMENTATION.md) | 设计取舍 | 为什么用两个属性选择器覆盖几何、为什么不自己拉起进程、npx 判据坑、为什么看所有 dist-tag、为什么机器名用槽位 priority、那一行为什么并列而不顶替官方选择器、工具开关为什么能即时生效、一次「点重启」的完整路径 |
+| [probe.mjs](probe.mjs) | 静态回归探针 | **344 项 / 17 类**，写在 15 个 `#region` 区块里（`grep -c '^// #region' probe.mjs` → 15）：cgroup 解析、supervisor 探测、单元优先级、命令构造、空闲状态机、产物形状、路由/工具契约、浏览器组件假渲染（含**品牌区顶替与 DOM 兜底两条路**、**状态指示两态与悬停明细**）、宿主判据（describeHost）、最后启动时间、版本比较与更新检查（假 fetch/假时钟）、机器名字（假 fs）、**重启工具网关**（即时注册/注销、两个字段分开报）、**模型格**（三段拼法与内部 id 退路、开关落盘、注册抛错不外抛） |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | 设计取舍（正文十节，`grep -c '^## ' IMPLEMENTATION.md` → 11 含末尾「相关文件」） | 为什么用两个属性选择器覆盖几何、为什么不自己拉起进程、npx 判据坑、为什么看所有 dist-tag、为什么当前版本要先 realpath、为什么机器名用槽位 priority、那一行为什么并列而不顶替官方选择器、工具开关为什么能即时生效、一次「点重启」的完整路径 |
 | [cordis.patch.yml](cordis.patch.yml) | bundle patch | `insert: [{id: setting-pro, name: '@dongasai/dsh-setting-pro'}]` |
 | [package.json](package.json) | manifest | `dsh.bundle.patch`、`dsh.client.{platform,immediately,inject}` |
 | [README.md](README.md) | 用户文档 | **怎么用**：开篇立论、功能表、三种装法与坑、界面逐块走查（含那一行的位置与悬停）、生效条件两半、结构（含扩展点占用表）、线上协议（7 路由 / 9 错误码）、安全模型、与 Agent 的关系、排错表、验证（命令行 + 浏览器打勾）、已知边界 |
@@ -139,9 +139,10 @@ graph TD
 ## 测试策略
 
 **没有前端测试环境，也没有真的重启可以在仓库里跑通**：能自动验的只有宿主侧纯逻辑与契约，
-那正是 `probe.mjs` 覆盖的 **16 类**（338 项），分布在 15 个 `#region` 区块里
-（`grep -c '^// #region' probe.mjs` → 15，其中第 8 块之后紧跟一块 `8b`）。**类号与区块号不是一一对应**：
-第 13、14 类（左上角、状态指示）的断言就写在第 8 块内部，末尾两块（区块 13、14）分别是第 15、16 类。
+那正是 `probe.mjs` 覆盖的 **17 类**（344 项），分布在 15 个 `#region` 区块里
+（`grep -c '^// #region' probe.mjs` → 15，其中第 8 块之后紧跟一块 `8b`）。**类号与区块号不是一一对应**，
+照实际位置说：第 13、14 类（左上角、状态指示）写在第 8 块内部；第 17 类（文档自洽）与第 15 类同在区块 13，
+而第 15 类的**客户端**断言反而写在区块 14 里面。
 
 1. `parseServiceUnit`：真实 cgroup 行 → `dsh.service`；叶子是 scope → `null`（**绝不回退到 user@1000.service**）；
 2. `detectSupervisor`：标记 + 父进程 `systemd` 才算（**这条只用于展示**，不是重启判据）；
@@ -202,12 +203,18 @@ graph TD
     **错误隔离**：用「先不跑回调、声明时才跑」的假 `inject` 让注册抛错，断言异常**没有**冒回槽位通知循环
     （官方 `notifyDeclaration`/`flush` 是裸循环，不隔离异常），并记下真实原因给设置页看。
 
+17. 文档自洽：README 协议表里抄了一份 `status()` 字段清单 → 用 `topLevelFields`（按花括号深度切，
+    因为清单里有嵌套的 `runningSessions[{…}]`）把它解析出来，与代码 `control.status()` 的**实际键**双向比对：
+    代码加了字段没写进表 → 失败；表里写了代码已删的字段 → 也失败；再加一条「条数 ≥ 20」防解析整个失效。
+    这条是 2026-10-18 补的：那一版文档刚把 `agentTools*` 四个字段加进表，正是最容易漂的时机。
+    （变异测试：从 README 删 `agentToolsError` → 1 项失败；往 README 加一个不存在的 `ghostField` → 1 项失败。）
+
 **探针刻意不触发真实重启**：只有本进程不在 systemd 服务里时才测「force 也会被 501 拒绝」那条；
 在真服务里跑探针同样安全（排程后立刻取消并 dispose）。
 
 命令行证明不了的部分，照 README 的清单在界面上核：尺寸三条 + 「Host 运维」五条
 （点重启会真的重启，需你本人点）+ 状态指示四条 + 机器名字三条 + 那一行的模型格四条
-（官方两条仍在、悬停三行、改模型后跟上、开关关掉即消失）+ DSH 版本两条。
+（官方两条仍在、悬停三行、改模型后跟上、开关关掉即消失）+ DSH 版本三条。
 
 ## 编码规范
 
@@ -314,12 +321,26 @@ graph TD
     注册抛错（撞工具名）必须被 `apply` 兜住：**不许把整个插件带崩**（那会连累七条路由与设置页）。
     一个文件里的两个键（`machineName` / `agentTools`）必须共用同一套 read-modify-write（`patch`），
     否则「存名字」会把开关抹掉（约束 22 的加强版）。
+26. **找 dsh 包必须先 `realpath` 再往上走，且绝不拿别人的版本号冒充**：全局安装的 dsh 是靠
+    `<prefix>/bin/dsh` 这个**符号链接**启动的，而 `bin/` 往上走碰不到那个包（它在 `lib/node_modules/…` 里）。
+    2026-10-18 本机实测：不 realpath 时一路走到 `~/.nvs/package.json`，把**版本管理器自己**的
+    `1.7.1` 当 dsh 版本报了（真实是 `0.2.0-rc.2`）—— 后果不只是显示错：拿 `1.7.1` 和 registry 一比
+    永远「已是最新」，**整个更新检查被废掉**，`next=0.2.1-rc.2` 这种真新版本被吞。
+    所以：① `resolveDshVersion` 入口先 realpath（注入 `realpath`，探针能喂假链接）；
+    ② realpath 失败退回原路径，**不要**因此整个判不出来；
+    ③ 找不到 dsh 包时 `version` 一律 `null`，只留 `source: 'nearest'` + `name`/`path` 当线索 ——
+    `nearest` 那个 manifest 属于**别的项目**，它的版本号不是 dsh 的版本（与约束 15 的
+    「解析不出就说不清，不装作相等」同一条纪律）。
+27. **README 协议表里的 `status` 字段清单不许漂**：那张表是从 `control.status()` 抄出去的，人改代码
+    很容易忘改表。探针里有双向断言（`topLevelFields` 按花括号深度解析，因为清单里有嵌套的
+    `runningSessions[{…}]`，朴素的 `[^}]*` 只会匹到最内层）：代码新增字段没写进 README → 失败；
+    README 写了代码里已删的字段 → 也失败。**改 `status()` 必须同时改 README 那一行。**
 
 ## AI 使用指引
 
 - 改 `index.js` 之前先读本文件「硬性约束」1–8；改 `client.js` 之前先读约束 9–14，动版本检查再看 15–17，
-  动机器名 / logo 标签 / 运行指示看 18–22，动那一行的模型格看 23–24，动「开放给 agent」开关看 25。
-- 改完**必须**跑 `node probe.mjs`（338 项）+ `node --check` 两半；探针只证明「开火之前的形状对」，
+  动机器名 / logo 标签 / 运行指示看 18–22，动那一行的模型格看 23–24，动「开放给 agent」开关看 25，动版本判定看 26，改 `status()` 字段看 27。
+- 改完**必须**跑 `node probe.mjs`（344 项）+ `node --check` 两半；探针只证明「开火之前的形状对」，
   **不证明重启真的能成功、也不真的查 registry / 不真的写状态文件**（分别用假 ctx、假 fetch、假 fs）。
 - 本会话的 bash 在 bwrap 沙箱里：`systemctl --user` 连不上 user bus（`Failed to connect to bus`），
   `/proc/<宿主 pid>` 也看不到。所以**不要在沙箱里试着重启 dsh** —— 这也是本插件必须把重启放在
@@ -330,7 +351,11 @@ graph TD
   → 未注册时 SPA 兜底回 `200 text/html`，已注册（未认证）回 `403 application/json`。
   对照物：`/workspace-editor/write`（dsh_editor 的路由）一直是后者。别被 200 骗了。
 - 别把 `--dump-config` 的 EROFS 当 bug 去改 dsh 或 profile：那是沙箱只读，不是仓库问题。
-- 版本认知：`0.10.0` = 上面这些 + **「重启工具是否开放给 agent」开关**（当前）；
+- 版本认知：`0.10.0` = 上面这些 + **「重启工具是否开放给 agent」开关** + **版本判定修 realpath**（当前）；
+  ⚠️ 名字暂时**不唯一**：用户选择「先只提交、不发版」，所以 `package.json` 仍是 `0.10.0`，
+  但 tag `0.10`（= 首个提交）**不含** realpath 那个修复，只有 `main` 的 HEAD 含。
+  下一次发版**必须 bump 到 `0.11` / `0.11.0`** 把这个歧义收掉，别再去覆盖 tag `0.10`
+  （已推到的引用不该被 force-push 改）。
   `0.9.0` = 那一行的「供应商 · 模型 · 思考档位」并列一格；
   `0.8.0` = 状态指示常显两态、悬停出「工作区 · 会话」明细；
   `0.7.0` = logo 后面的「运行中」指示（忙时才显示）；
@@ -507,3 +532,28 @@ graph TD
   `agentTools` 恒为布尔时 `=== true` 与 `!== false` 无法区分，不强求。）
   同时：仓库首次入库（`main` + `.gitignore`），tag `0.10` 与 `package.json` 的 `0.10.0` 对应。
   仍未验证：真实页面上勾选后**当前正在跑的回合**是否还带着旧工具列表（设计上是「不追溯」，见 README 已知边界）。
+- `2026-10-18T10:15:14+0800` · **修复：dsh 版本读成了别的项目的版本号（更新检查因此整个废掉）**。
+  起因是核对推送状态时随手看了一次 `dsh_restart_status`：那行写 `dsh: 1.7.1 (nearest)`，而
+  `npm ls -g` 装的是 `0.2.0-rc.2`。**先查证再动手**：`ls -l <prefix>/bin/dsh` 是指向
+  `../lib/node_modules/@deepseek-ai/dsh/lib/bin.js` 的**符号链接**，而本机 `<prefix>` =
+  `~/.nvs/node/24.13.0/x64`；`resolveDshVersion` 拿 `argv[1]`（那个链接路径）**往上走**时，
+  `bin/` 这一支根本碰不到 dsh 包，先撞上的是 `<prefix>/package.json` —— 属于**版本管理器 nvs 自己**，
+  版本 `1.7.1`。用 `realpath` 后再走就命中 `source: 'package' / 0.2.0-rc.2`（实测两条都跑过）。
+  **危害不只是显示错**：`1.7.1` 被当成当前版本送进 `summariseVersions`，比 registry 的
+  `next=0.2.1-rc.2`、`alpha=0.2.1-alpha.5` 都「新」→ 永远判「已是最新」，更新检查静默失效，
+  而且界面一切正常 —— 最难发现的那类 bug（0.4.0 上线起就带着，本机全局装法必现）。
+  修法两条，第二条才是根本的：① 入口先 `realpath`（注入 `realpath`，探针能喂假链接；
+  realpath 失败退回原路径，宁可少认一层也别整个判不出来）；② **`nearest` 不再带版本号**
+  —— `version: null`，只留 `source`/`name`/`path` 当线索；将来再冒出别的路径花样也不会把
+  别人的版本号冒充成 dsh 版本（与约束 15「解析不出就说不清，不装作相等」同一纪律，写成约束 26）。
+  界面那句 `comparable === false` 的文案跟着改准（原来只提 semver，现在还包括「没找到它的 package.json」）。
+  **另外补了约束 27 和一类新断言**：README 协议表抄了一份 `status()` 字段清单，本轮刚加过
+  `agentTools*` 四个字段，正是最容易漂的时机 → 用 `topLevelFields`（按花括号深度切；清单里有
+  嵌套的 `runningSessions[{…}]`，朴素的 `[^}]*` 只会匹到最内层那一段 —— 这个坑本轮踩过一次，
+  第一版断言因此恒真）把它解析出来与代码实际键**双向**比对。
+  探针 338 → **344 项全绿**（新增 realpath 三例 + nearest 不冒充 + 文档自洽双向两例）；
+  `index.js` 1453 → **1470 行**；**未发版**（用户选「先只提交」）：`package.json` 仍是 `0.10.0`，
+  tag `0.10` 指向首个提交、**不含**本修复，下次发版必须 bump `0.11`，不要 force-push 覆盖已推的 tag。
+  验证边界：本修复改的是 `index.js`，**要重启 dsh 才生效**；沙箱里不能自重启（`systemctl --user`
+  连不上 user bus），所以「重启后界面显示 `0.2.0-rc.2`、来源 `package`」这一条仍需用户在界面上核。
+  顺带把文档里所有现场数字重算同步（探针数、行数、类数、DSH 版本清单三条、硬性约束 27 条）。

@@ -22,7 +22,7 @@
 | 项 | 值 |
 | --- | --- |
 | 包名 | `@dongasai/dsh-setting-pro` |
-| 版本 | **0.10.0**（与 `package.json` 一致；当前 tag 是 **`0.10`**） |
+| 版本 | **0.10.0**（与 `package.json` 一致）。⚠️ 当前 tag **`0.10`** 指向首个提交，**不含** 2026-10-18 那个「dsh 版本读错 → 更新检查废掉」的修复；修复只在 `main` 上，下次会发成 `0.11`。所以「装 `#0.10`」≠「拿到最新代码」 |
 | profile 行 id | `setting-pro` |
 | 源码 | `/data/ai/dsh/dsh_setting_pro` |
 | 界面入口 | 「设置 → 高级设置」（左侧导航最后一项；图标是官方给未知 id 的默认齿轮） |
@@ -170,7 +170,7 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:3080/s
 | [client.js](client.js) | 浏览器半边：面板几何覆盖、`settings.section` 设置页（含「开放给 agent」开关）、品牌区顶替、DOM 兜底、状态轮询、那一行的模型格 |
 | [cordis.patch.yml](cordis.patch.yml) | bundle patch：只 `insert` 一行 `id: setting-pro` |
 | [package.json](package.json) | manifest：`dsh.bundle.patch` 指向 patch；`dsh.client` 声明 `platform/immediately/inject` |
-| [probe.mjs](probe.mjs) | 静态回归探针：`node probe.mjs`，**338 项**，不出网、不写真实状态文件 |
+| [probe.mjs](probe.mjs) | 静态回归探针：`node probe.mjs`，**344 项**，不出网、不写真实状态文件 |
 | [README.md](README.md) / [IMPLEMENTATION.md](IMPLEMENTATION.md) / [AGENTS.md](AGENTS.md) | 怎么用 / 为什么 / 给 agent 的约束 |
 
 **Host 半边注入的服务**（`index.js`）：`webServer`（挂路由）、`connection`（信任围栏）、
@@ -273,6 +273,7 @@ curl -s -X POST -H 'content-type: application/json' \
 | 模型格的档位显示「供应商默认」 | 该模型的目录元数据里确实没给档位，或没选过档 | 与官方那个下拉一致（同一个判据），不是本插件算错 |
 | 关掉「开放给 agent」后模型还能调用 | 那一轮的工具列表是**开场时**发出去的，不追溯 | 正常（README「与 Agent 的关系」里写了）；关掉后再开一个新回合就看不到了 |
 | 更新提示不出现 | 各 dist-tag 都不高于当前版本；或 registry 不可达 | 状态行会写「更新检查失败：…」；`DSH_SETTING_PRO_REGISTRY` 可换镜像 |
+| 当前版本显示成**别的项目**的版本号（本机曾显示 `1.7.1`，真实 `0.2.0-rc.2`），并且永远说「已是最新」 | 全局装的 dsh 从 `<prefix>/bin/dsh` 符号链接启动，不 realpath 时往上找包会先撞上 `<prefix>/package.json`（本机是版本管理器自己的 manifest） | 这是 **0.10.0 之后**修的 bug，未随 tag `0.10` 发布：重启 dsh 加载新 `index.js` 后即恢复正常（来源显示 `package`）。急用可设 `DSH_SETTING_PRO_DSH_VERSION=真实版本` 直接指 |
 | 排程后迟迟不重启 | 还有会话在跑（含子代理 / 团队成员的回合） | 状态行会写「仍有 N 个会话在运行」；等它们空闲，或点「取消排程」 |
 | 改了 `index.js` 没生效 | Host 半边被进程缓存 | 重启 dsh（或先点页面上的「重启 DSH」） |
 
@@ -281,7 +282,7 @@ curl -s -X POST -H 'content-type: application/json' \
 ### 命令行能覆盖的部分
 
 ```bash
-# 0) 静态回归探针：338 项（宿主判据 / 命令构造 / 空闲状态机 / 路由契约 / 版本比较与更新检查 /
+# 0) 静态回归探针：344 项（宿主判据 / 命令构造 / 空闲状态机 / 路由契约 / 版本比较与更新检查 /
 #    机器名与开关的清洗存取（假 fs，不碰 ~/.dsh）/ 组件渲染 / 品牌区顶替与 DOM 兜底 /
 #    状态指示（忙·空闲·悬停明细）/ 模型格（三段拼法、id 退路、开关落盘、挂不上时不冒异常）/
 #    工具网关（即时注册注销、状态两个字段分开报、apply 不被注册失败带崩）/ 产物形状）
@@ -341,10 +342,15 @@ Host 运维五条（会真的重启，需你本人点）：
 - [ ] 改模型（用官方那个下拉）后，这一格跟着变（不用刷新页面）；
 - [ ] 到「高级设置」取消勾选「显示模型信息」→ 那一格**当场消失**，只剩官方内容；刷新页面后仍是关的。
 
-DSH 版本两条：
+DSH 版本三条：
 
-- [ ] 打开设置页即显示当前版本（应与 `npx @deepseek-ai/dsh --version` 一致）与各通道最新值；
-- [ ] 若某个 dist-tag 高于当前版本，出现 warn 色「有新版本 · …」；点「检查更新」强制重查。
+- [ ] 打开设置页即显示当前版本，与 `npm ls -g @deepseek-ai/dsh`（全局装法）一致，且来源写着 `package`
+      —— 不是 `nearest`。（`nearest` 意味着没认出 dsh 包，见排错表）；
+- [ ] 若某个 dist-tag 高于当前版本，出现 warn 色「有新版本 · …」；点「检查更新」强制重查；
+- [ ] 反向确认它不再瞎报「已是最新」：拿当前版本和 registry 的 `next`/`alpha` 心算一下，
+      有更新就必须出现那一行提示。
+
+⚠️ 这一条要**重启 dsh 之后**才成立（2026-10-18 修的是 Host 半边的 `index.js`）。
 
 ## 已知边界
 
@@ -388,10 +394,10 @@ DSH 版本两条：
 
 | 文件 | 作用 |
 | --- | --- |
-| [index.js](index.js) | Host 半边（1453 行） |
+| [index.js](index.js) | Host 半边（1470 行） |
 | [client.js](client.js) | 浏览器半边（1991 行） |
-| [probe.mjs](probe.mjs) | 静态回归探针（338 项） |
+| [probe.mjs](probe.mjs) | 静态回归探针（344 项） |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | 为什么这么实现 |
-| [AGENTS.md](AGENTS.md) | 给 agent 的约束（25 条硬性约束、改动连带项） |
+| [AGENTS.md](AGENTS.md) | 给 agent 的约束（27 条硬性约束、改动连带项） |
 | [.agents/index.json](.agents/index.json) | 仓库扫描索引（模块、覆盖率、缺口、下一步） |
 | [cordis.patch.yml](cordis.patch.yml) / [package.json](package.json) | bundle patch 与 manifest |

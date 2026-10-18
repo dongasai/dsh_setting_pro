@@ -90,8 +90,31 @@
 Host 侧缓存 6h。**一次网络抖动不得抹掉已有结论**：失败只记 `error` 并保留上一次成功的 dist-tags；
 当前版本是本地读文件，不依赖网络。
 
-「当前版本」从 `process.argv[1]`（`…/@deepseek-ai/dsh/lib/bin.js`）往上找 dsh 包的 `package.json` ——
-不 import 官方包（`link:` 装法解析不到），也**不写死路径**。找不到就记 `nearest`/`none`，不猜。
+### 四.1 「当前版本」怎么读到：为什么必须先 realpath
+
+不 import 官方包（`link:` 装法解析不到），也**不写死路径**：从 `process.argv[1]` 往上找 dsh 包的
+`package.json`。但**这条路径在 0.4.0 上线后一直是错的**，直到 2026-10-18 才从 `dsh_restart_status`
+的输出里撞出来 —— 那行报 `dsh: 1.7.1 (nearest)`，而 `npm ls -g` 说的是 `0.2.0-rc.2`。
+
+查出来的是安装方式决定的：全局装的东西靠 `<prefix>/bin/dsh` 这个**符号链接**启动，
+链接指向 `../lib/node_modules/@deepseek-ai/dsh/lib/bin.js`。如果拿 `bin/dsh` 这个路径往上走，
+经过的是 `<prefix>/bin` → `<prefix>`，那里**没有** dsh 包的 `package.json`，
+却先撞上了 `<prefix>/package.json` —— 本机 `<prefix>` 是 `~/.nvs/node/24.13.0/x64`，
+那个 manifest 属于 **nvs 自己**，版本 `1.7.1`。
+
+后果比「显示错一个数字」严重得多：`1.7.1` 被当成当前版本拿去和 registry 比，
+`0.2.1-rc.2` < `1.7.1` → 永远判「已是最新」，**更新检查整个废掉**（真实情况恰好是有新版本可升）。
+而且它不会报错，看起来一切正常 —— 是最难发现的那类 bug。
+
+于是：① 入口先 `realpath`（可注入，探针能喂假链接）；② realpath 失败退回原路径，
+宁可少认一层也别整个判不出来；③ **`nearest` 从此不再带版本号**（`version: null`，只留
+`source`/`name`/`path` 当线索）。第 ③ 条是更根本的那道防线：哪怕将来又冒出别的链接/路径花样，
+也不会把**别的项目**的版本号冒充成 dsh 的版本 —— 与「解析不出就说不知道，不装作相等」
+（§四、约束 15）同一条纪律。界面那边相应把 `comparable === false` 的文案改成
+「没读到可识别的 dsh 版本」，而不是原来那句只提 semver 的说法。
+
+代价：如果哪天 dsh 被搬进一个没有 `package.json` 的裸目录跑，版本会显示「未知 · 来源 nearest」，
+需要 `DSH_SETTING_PRO_DSH_VERSION` 手动指一下。这是**诚实的不知道**，比一个看起来可靠的错数字好。
 
 ## 五、机器名字：为什么存 Host、为什么用槽位 priority
 
@@ -329,7 +352,7 @@ HTTP 处理函数里被调的，那个 effect 仍挂在**本插件的 fiber** �
 | 文件 | 作用 |
 | --- | --- |
 | [README.md](README.md) | 怎么用：装、用、协议、排错、验证、边界 |
-| [AGENTS.md](AGENTS.md) | 给 agent 的约束与改动连带项（25 条硬性约束） |
+| [AGENTS.md](AGENTS.md) | 给 agent 的约束与改动连带项（27 条硬性约束） |
 | [index.js](index.js) | Host 半边：6 条路由 + 3 个工具 + 重启引擎 + 版本检查 + 机器名存取 |
 | [client.js](client.js) | 浏览器半边：CSS 覆盖、设置页、品牌区顶替、DOM 兜底、运行指示、那一行的模型格 |
-| [probe.mjs](probe.mjs) | 静态回归探针（338 项，不出网、不写真实状态文件） |
+| [probe.mjs](probe.mjs) | 静态回归探针（344 项，不出网、不写真实状态文件） |

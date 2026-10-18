@@ -1141,6 +1141,49 @@ const nearestResult = resolveDshVersion({
 	...fakeFs({ '/opt/node_modules/@deepseek-ai/dsh/lib/package.json': JSON.stringify({ name: 'dsh-lib', version: '9.9.9' }) })
 });
 equal('resolveDshVersion: 找不到 dsh 时记最近一个 manifest（标 nearest）', nearestResult.source, 'nearest');
+// 回归（2026-10-18 本机实测）：nearest 那个 manifest 是**别的项目**的，绝不能拿它的版本号冒充 dsh。
+// 当时全局 bin 是符号链接，往上走到 ~/.nvs/package.json → 报 dsh 1.7.1（真实 0.2.0-rc.2），
+// 和 registry 一比永远「已是最新」，更新检查整个被废掉。
+equal('resolveDshVersion: nearest 不冒充版本（version 必须 null）', nearestResult.version, null);
+check('resolveDshVersion: nearest 仍留下线索（name / path）',
+	nearestResult.name === 'dsh-lib' && typeof nearestResult.path === 'string');
+check('resolveDshVersion: nearest → 更新检查判为「无法比较」（不是「已是最新」）', (() => {
+	const summary = summariseVersions(nearestResult.version, { latest: '0.2.0-rc.2', alpha: '0.2.1-alpha.5' });
+	return summary.comparable === false && summary.upToDate !== true && summary.newer === null;
+})());
+
+// 全局安装的 dsh 从 <prefix>/bin/dsh（符号链接）启动：不 realpath 就碰不到那个包。
+const linkResult = resolveDshVersion({
+	env: {},
+	argv1: '/opt/prefix/bin/dsh',
+	// 链接指向包里的入口，但 <prefix>/bin 往上走只有版本管理器自己的 manifest
+	realpath: () => '/opt/prefix/lib/node_modules/@deepseek-ai/dsh/lib/bin.js',
+	...fakeFs({
+		'/opt/prefix/lib/node_modules/@deepseek-ai/dsh/package.json': DSH_MANIFEST,
+		'/opt/prefix/package.json': JSON.stringify({ name: 'nvs', version: '1.7.1' })
+	})
+});
+check('resolveDshVersion: bin 符号链接先 realpath 才认得 dsh 包', linkResult.source === 'package' && linkResult.version === '0.2.0-rc.2',
+	JSON.stringify(linkResult));
+const noRealpath = resolveDshVersion({
+	env: {},
+	argv1: '/opt/prefix/bin/dsh',
+	realpath: (target) => target,
+	...fakeFs({ '/opt/prefix/package.json': JSON.stringify({ name: 'nvs', version: '1.7.1' }) })
+});
+check('resolveDshVersion: 不 realpath（旧行为）也不再报别人的版本号', noRealpath.version === null && noRealpath.source === 'nearest',
+	JSON.stringify(noRealpath));
+check('resolveDshVersion: realpath 抛错时退回原路径（不至于整个判不出来）', (() => {
+	const boom = resolveDshVersion({
+		env: {},
+		argv1: binPath,
+		realpath: () => {
+			throw new Error('EACCES');
+		},
+		...fakeFs({ '/opt/node_modules/@deepseek-ai/dsh/package.json': DSH_MANIFEST })
+	});
+	return boom.version === '0.2.0-rc.2' && boom.source === 'package';
+})());
 equal('resolveDshVersion: env 覆盖优先', resolveDshVersion({ env: { [DSH_VERSION_ENV]: '1.2.3' }, argv1: binPath }).source, 'env');
 equal('resolveDshVersion: 什么都没有 → null', resolveDshVersion({ env: {}, argv1: '', ...fakeFs({}) }).version, null);
 

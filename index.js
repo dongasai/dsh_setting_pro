@@ -64,7 +64,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -392,9 +392,18 @@ export function compareVersions(a, b) {
  *
  * 不 import `@deepseek-ai/*`（`link:` 装法下解析不到），所以从**进程启动路径**往上找
  * `package.json`：`process.argv[1]` 是 `<…>/node_modules/@deepseek-ai/dsh/lib/bin.js`，
- * 往上两层就是 dsh 包的 manifest。找不到 dsh 时退而记录最近的一个 manifest（标 `nearest`），
- * 一个都读不到就返回 `version: null`（界面显示「未知」，不猜）。
- * @param options - `env` / `argv1` / `exists` / `readFile` 注入（测试用）。
+ * 往上两层就是 dsh 包的 manifest。
+ *
+ * ⚠️ 全局安装的 dsh 是靠 **bin 符号链接**启动的：`<prefix>/bin/dsh -> ../lib/node_modules/
+ * @deepseek-ai/dsh/lib/bin.js`。`<prefix>/bin/` 往上走碰不到那个包，会先撞上别人的
+ * package.json。所以**必须先 realpath 再往上找** —— 2026-10-18 本机实测：不 realpath 时
+ * 一路走到 `~/.nvs/package.json`，把**版本管理器自己**的 `1.7.1` 当成 dsh 版本报了
+ * （真实是 `0.2.0-rc.2`），和 registry 一比永远「已是最新」，等于把更新检查整个废掉。
+ *
+ * 找不到 dsh 包时**不拿别人的版本号冒充**：`version` 返回 `null`，只把就近那个 manifest 的
+ * `source: 'nearest'` / `name` / `path` 留着当线索（界面显示「未知」并说明来源）。
+ * 一个都读不到同样返回 `null`。
+ * @param options - `env` / `argv1` / `exists` / `readFile` / `realpath` 注入（测试用）。
  * @returns `{ version, source, path, name }`。
  */
 export function resolveDshVersion(options = {}) {
@@ -405,7 +414,14 @@ export function resolveDshVersion(options = {}) {
 	if (argv1 === '') return { version: null, source: 'none', path: null, name: null };
 	const exists = options.exists ?? existsSync;
 	const readFile = options.readFile ?? ((file) => readFileSync(file, 'utf8'));
+	// realpath 读不动（路径不存在、没权限…）就退回原始路径：宁可少认一层，也别整个判不出来。
+	const resolveLink = options.realpath ?? realpathSync;
 	let dir = dirname(argv1);
+	try {
+		dir = dirname(resolveLink(argv1));
+	} catch (error) {
+		dir = dirname(argv1);
+	}
 	let nearest = null;
 	for (let depth = 0; depth < VERSION_WALK_UP; depth += 1) {
 		const candidate = join(dir, 'package.json');
@@ -421,8 +437,9 @@ export function resolveDshVersion(options = {}) {
 					return { version: manifest.version, source: 'package', path: candidate, name: manifest.name };
 				}
 				if (nearest === null) {
+					// 那是**别的项目**的 manifest：只留来源线索，version 一律 null（不冒充 dsh 版本）。
 					nearest = {
-						version: manifest.version,
+						version: null,
 						source: 'nearest',
 						path: candidate,
 						name: typeof manifest.name === 'string' ? manifest.name : null

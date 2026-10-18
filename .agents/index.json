@@ -72,7 +72,7 @@
         "restart mechanism: spawn('systemd-run', ['--user','--collect','--unit=dsh-restart-setting-pro-<ts>','--on-active=3s','systemctl','--user','restart',<unit>])",
         "host capability: describeHost() —— cgroup 叶子 .service + systemd 标记 → supported（**不看父进程 comm**：本机 ExecStart 是 npx 拉起）；env override DSH_SETTING_PRO_UNIT；fallback 'dsh'；拒绝 user@*.service",
         "client UI contract: 「重启 DSH」「空闲后重启」始终可点（不因 !supported/armed 灰掉）；非 JSON 响应（SPA 兜底 200 text/html）标 missing，绝不当成功",
-        "GET /setting-pro/version[?refresh=1] -> { package, registry, ttlMs, current, currentSource, currentPath, tags[], newest, newestTag, newer, upToDate, line, comparable, checkedAt, attemptAt, error }",
+        "GET /setting-pro/version[?refresh=1] -> { package, registry, ttlMs, current, currentSource, currentPath, tags[], newest, newestTag, newer, upToDate, line, comparable, checkedAt, attemptAt, error }；currentSource 为 package（先 realpath argv[1]）/ nearest（version 恒 null，不冒充）/ env / none",
         "version check: resolveDshVersion() 从 process.argv[1] 往上找 @deepseek-ai/dsh/package.json（env DSH_SETTING_PRO_DSH_VERSION 可覆盖）；registry 端点 {registry}/-/package/@deepseek-ai%2Fdsh/dist-tags（DSH_SETTING_PRO_REGISTRY 可换镜像）；缓存 6h；失败保留上次成功 tags",
         "GET /setting-pro/machine -> { name, path, error, maxLength }；POST /setting-pro/machine {name} -> 写入 $DSH_HOME/setting-pro.json 的 machineName（空串＝清除；非字符串 → 400）",
         "machine store: stateFilePath()（$DSH_HOME 缺省 ~/.dsh）+ sanitizeMachineName()（剥控制字符/折叠空白/截断 64/非字符串 null）+ createMachineStore()（tmp+rename 原子写、保留同文件其它键、坏数据退回空名并记 error）",
@@ -134,7 +134,7 @@
         }
       ],
       "tests": [
-        "probe.mjs (338 项断言，node probe.mjs；15 个 #region 区块 = grep -c '^// #region' probe.mjs)"
+        "probe.mjs (344 项断言，node probe.mjs；15 个 #region 区块 = grep -c '^// #region' probe.mjs)"
       ],
       "qualityTooling": [
         "node --check (两半)",
@@ -254,7 +254,8 @@
     "真实浏览器里的观感（品牌区顶替后的排版、侧边栏折叠时的表现）只能靠页面确认；探针用的是假槽位与假 DOM",
     "那一行的模型格读的是官方面向内部插件的服务（modelDirectories / directory.store）与会话投影，属于**非公开契约**：官方换实现时这一格会退化成显示内部 id 或整格不显示（不报错，也不影响官方那两条 pill）",
     "「开放给 agent」开关对**已开场**的回合不追溯：工具列表是那次请求发给模型的，正在跑的那轮仍可能带着它调用（设计上如此，README 已知边界已写明）；未在真实页面上验证",
-    "本仓库无 CI：推送后没有任何自动检查，门只有本地的 node probe.mjs + node --check（改完必须手跑）"
+    "本仓库无 CI：推送后没有任何自动检查，门只有本地的 node probe.mjs + node --check（改完必须手跑）",
+    "dsh 版本判定的 realpath 修复（2026-10-18）需要重启 dsh 才生效，本会话不能自重启；重启后界面须显示 0.2.0-rc.2 / 来源 package，尚未在界面验证"
   ],
   "nextSteps": [
     "重启一次 dsh（0.10.0 改了 index.js：第 7 条路由 + 工具网关）后刷新页面：Host 运维块出现「开放给 agent」勾选框，取消勾选后下面那行变「未开放（工具已注销）」，新回合里模型看不到 dsh_restart_*",
