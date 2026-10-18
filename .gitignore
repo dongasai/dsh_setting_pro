@@ -1,0 +1,16 @@
+# 探针用完会自己删掉；中断时可能残留
+.probe-tmp/
+
+# 状态文件原子写的中间产物（正常写在 $DSH_HOME，不该出现在仓库里）
+*.tmp
+
+# 依赖与构建产物（本插件零依赖、无构建，只为以防）
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+dist/
+
+# 编辑器 / 系统垃圾
+.DS_Store
+*.swp
+*~

@@ -1,0 +1,35 @@
+{
+  "name": "@dongasai/dsh-setting-pro",
+  "version": "0.10.0",
+  "private": true,
+  "type": "module",
+  "description": "Resize the DSH Web settings dialog (default 800x800), group its controls on a dedicated Settings -> Advanced page, and add Host controls: restart / restart-when-idle, last start time, a dsh version / update check, a machine name that takes over the sidebar brand area (falling back to a line under the logo), an always-visible status chip next to the logo (running sessions with workspace and title details on hover, idle when nothing runs), and a read-only provider / model / thinking-level cell added beside the official composer performance-and-usage pills, plus a Host-side toggle for whether the three restart tools are exposed to agents (register/unregister at runtime, no restart needed).",
+  "meta": {
+    "title": "设置弹窗尺寸与 Host 运维",
+    "description": "把设置面板从默认 800×800 放大、控制项收在「设置 → 高级设置」页里；同一页提供重启 dsh / 空闲后重启、最后启动时间，以及 dsh 版本与更新提示、机器名字（直接顶替左上角品牌区，失败才退回 logo 下一行）、logo 后面常驻的状态指示（忙时「运行中 ×N」悬停看 工作区·会话，空闲时「空闲」），以及在输入框下方「性能与用量」那一行旁边并列加一格只读的「供应商 · 模型 · 思考档位」；另有一个「开放给 agent」开关，即时注册/注销那三个重启工具（不用重启 dsh）。"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings-general",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}
