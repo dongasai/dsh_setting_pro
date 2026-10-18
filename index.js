@@ -463,14 +463,24 @@ export function resolveDshVersion(options = {}) {
  * 取最高版本，并额外给出「当前版本所在预发布线」（`rc` → `alpha`/`beta` 同名 tag）的对照。
  * @param current - 当前版本（可为 null）。
  * @param tags - registry 的 dist-tags 对象。
- * @returns `{ tags[], newest, newestTag, newer, line, comparable }`。
+ * @param channel - 用户选的通道：`'auto'`（默认，所有 tag 取最高）或具体 tag 名
+ *   （`latest` / `next` / `alpha` …）。**默认必须是 auto**：0.4.0 起就是这个行为，
+ *   加通道选择不该偷偷改变既有结论（同 `AGENT_TOOLS_DEFAULT` 的纪律）。
+ * @returns `{ tags[], channels[], channel, channelRequested, channelMissing, newest, newestTag, newer, line, comparable }`。
  */
-export function summariseVersions(current, tags) {
+export function summariseVersions(current, tags, channel) {
 	const entries = Object.entries(tags ?? {})
 		.filter(([, version]) => typeof version === 'string' && parseVersion(version) !== null)
 		.map(([tag, version]) => ({ tag, version }))
 		.sort((left, right) => (compareVersions(right.version, left.version) ?? 0));
-	const newest = entries.length > 0 ? entries[0] : null;
+	const wanted = typeof channel === 'string' && channel.trim() !== '' ? channel.trim() : 'auto';
+	// 选了具体通道就只跟那条线比；auto 才是「所有 dist-tag 取最高」。
+	const picked = wanted === 'auto'
+		? (entries.length > 0 ? entries[0] : null)
+		: (entries.find((entry) => entry.tag === wanted) ?? null);
+	// 通道不存在时**不偷偷退回 auto**：那会把「你选的这条线没有发布」说成「已是最新」。
+	const channelMissing = wanted !== 'auto' && picked === null;
+	const newest = picked;
 	const parsedCurrent = current === null ? null : parseVersion(current);
 	const comparable = newest !== null && parsedCurrent !== null;
 	const diff = comparable ? compareVersions(newest.version, current) : null;
@@ -478,9 +488,14 @@ export function summariseVersions(current, tags) {
 	const lineVersion = label === null ? undefined : (tags ?? {})[label];
 	return {
 		tags: entries,
+		channels: entries.map((entry) => entry.tag),
+		channel: channelMissing ? 'auto' : (newest === null ? wanted : newest.tag),
+		channelRequested: wanted,
+		channelMissing,
 		newest: newest === null ? null : newest.version,
 		newestTag: newest === null ? null : newest.tag,
 		newer: diff !== null && diff > 0 ? { version: newest.version, tag: newest.tag } : null,
+		// 通道缺失时既不是「有新版本」也不是「已是最新」，两个都不能 true。
 		upToDate: diff !== null && diff <= 0,
 		line: typeof lineVersion === 'string' ? { tag: label, version: lineVersion } : null,
 		comparable
@@ -501,8 +516,12 @@ export function createVersionChecker(options = {}) {
 	const resolveCurrent = options.resolveCurrent ?? (() => resolveDshVersion({ env }));
 	let cache = null;
 
-	/** 查一次 dist-tags；失败不抛，把原因放进 `error`。 */
-	async function queryTags(currentVersion, at) {
+	/**
+	 * 查一次 dist-tags；失败不抛，把原因放进 `error`。
+	 * ⚠️ 这里**只存原始 tags，不存结论**：结论按用户选的通道在 `get()` 里现算，
+	 * 于是切通道是纯本地操作（不打网络、不等 6h 缓存过期）。
+	 */
+	async function queryTags(at) {
 		const url = registry + '/-/package/' + encodeURIComponent(DSH_PACKAGE) + '/dist-tags';
 		try {
 			const response = await fetchImpl(url, {
@@ -512,9 +531,9 @@ export function createVersionChecker(options = {}) {
 			if (response.ok !== true) throw new Error('registry responded ' + String(response.status));
 			const raw = await response.json();
 			if (raw === null || typeof raw !== 'object') throw new Error('registry returned a non-object dist-tags payload');
-			return { checkedAt: at, raw, error: null, ...summariseVersions(currentVersion, raw) };
+			return { checkedAt: at, raw, error: null };
 		} catch (error) {
-			return { checkedAt: at, raw: null, error: messageOf(error), ...summariseVersions(currentVersion, {}) };
+			return { checkedAt: at, raw: null, error: messageOf(error) };
 		}
 	}
 
@@ -522,15 +541,15 @@ export function createVersionChecker(options = {}) {
 		/**
 		 * 读版本状态；过期或 `refresh` 时去 registry 查一次。
 		 * 查询失败时**保留上一次成功的 dist-tags**（只记 `error`），避免一次网络抖动把已有结论抹掉。
-		 * @param query - `{ refresh?: boolean }`。
-		 * @returns 版本状态载荷。
+		 * @param query - `{ refresh?: boolean, channel?: string }`。
+		 * @returns 版本状态载荷（结论按 `channel` 现算，默认 auto）。
 		 */
 		async get(query = {}) {
 			const current = resolveCurrent();
 			const at = now();
 			const stale = cache === null || at - cache.checkedAt >= ttlMs;
 			if (query.refresh === true || stale) {
-				const fresh = await queryTags(current.version, at);
+				const fresh = await queryTags(at);
 				if (fresh.error !== null && cache !== null && cache.raw !== null) {
 					cache = { ...cache, attemptAt: at, error: fresh.error };
 				} else {
@@ -547,13 +566,7 @@ export function createVersionChecker(options = {}) {
 				checkedAt: cache.checkedAt,
 				attemptAt: cache.attemptAt ?? cache.checkedAt,
 				error: cache.error ?? null,
-				tags: cache.tags,
-				newest: cache.newest,
-				newestTag: cache.newestTag,
-				newer: cache.newer,
-				upToDate: cache.upToDate,
-				line: cache.line,
-				comparable: cache.comparable
+				...summariseVersions(current.version, cache.raw ?? {}, query.channel)
 			};
 		}
 	};
@@ -1186,13 +1199,19 @@ export function registerRoutes(ctx, control, versionChecker) {
 				return;
 			}
 			let refresh = false;
+			let channel = '';
 			try {
-				refresh = new URL(req.url ?? ROUTE_VERSION, 'http://localhost').searchParams.get('refresh') === '1';
+				const params = new URL(req.url ?? ROUTE_VERSION, 'http://localhost').searchParams;
+				refresh = params.get('refresh') === '1';
+				// 通道名不校验白名单：registry 有什么 tag 就算什么（用户要 latest/next/alpha，
+				// 将来多一条 beta 线也不用改这里）。空 = auto。
+				channel = String(params.get('channel') ?? '').trim();
 			} catch (error) {
 				refresh = false;
+				channel = '';
 			}
 			try {
-				sendJson(res, 200, await versionChecker.get({ refresh }));
+				sendJson(res, 200, await versionChecker.get({ refresh, channel }));
 			} catch (error) {
 				sendJson(res, 500, { code: 'version-check-failed', message: messageOf(error) });
 			}

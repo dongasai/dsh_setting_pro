@@ -51,6 +51,16 @@ window.__ModuleLoader__.load({
 		const CANCEL_URL = '/setting-pro/cancel';
 		/** 版本与更新检查；`?refresh=1` 强制重查。 */
 		const VERSION_URL = '/setting-pro/version';
+		/** 用户选的更新通道（浏览器偏好：看的是「这台机器上我关心哪条线」）。 */
+		const CHANNEL_KEY = 'dsh.setting-pro.channel';
+		/** 默认通道：auto = 所有 dist-tag 取最高（0.4.0 起的既有行为，加通道选择不偷偷改变它）。 */
+		const CHANNEL_DEFAULT = 'auto';
+		/**
+		 * 版本轮询间隔。Host 侧对 registry 缓存 6h，客户端查再勤也快不过它；
+		 * 5 分钟足够让「刚发了新版本」在一杯茶的功夫内出现在 logo 上，
+		 * 又不至于每 2 秒打一次本地路由。
+		 */
+		const VERSION_POLL_MS = 300000;
 		/** 机器名字：GET 读、POST 写。 */
 		const MACHINE_URL = '/setting-pro/machine';
 		/** 重启工具是否开放给 agent：GET 读、POST `{enabled}` 写（即时注册/注销，不用重启）。 */
@@ -102,6 +112,8 @@ window.__ModuleLoader__.load({
 		const RUN_LABEL_CLASS = 'dspro_runLabel';
 		/** 排程标记那个感叹号（单独一个 span，才能只给它 warn 色）。 */
 		const RUN_BANG_CLASS = 'dspro_runBang';
+		/** logo 上的「有更新」箭头（向上）。 */
+		const UPDATE_CLASS = 'dspro_update';
 		const RUN_DOT_CLASS = 'dspro_runDot';
 		/** 为这个指示轮询 `/status` 的间隔（设置页自己还有 2s 的轮询，这里够用就好）。 */
 		const RUN_POLL_MS = 5000;
@@ -133,6 +145,21 @@ window.__ModuleLoader__.load({
 		const MODEL_SEP_CLASS = 'dspro_modelPillSep';
 		/** 槽位挂载失败时的真实原因（设置页要说出来，不静默吞掉）。 */
 		const modelPillState = { mounted: false, reason: '' };
+		/**
+		 * 「运行中」指示挂在左侧导航**左下角**的 `sidebar.footer.action`。
+		 *
+		 * 侦察记录（2026-10-19）：官方 `dsh-client-ui-sidebar` 把这个槽位声明成
+		 * `kind: "list"`、`scope: "root"`，渲染在 `footArea > footerActions` 里，
+		 * 并把 `{ wide }` 透给注册者；官方自己只占 `id: "cordis-panel"` 一格。
+		 * 所以这里用**我们自己的 id** 并列（与约束 23 同一套判断：list 槽按 id 分格，
+		 * 不同 id 都会渲染，位置只由 order 决定）—— 不抢别人的格子。
+		 */
+		const FOOTER_SLOT = 'sidebar.footer.action';
+		const RUN_ID = 'run-status';
+		/** 排在官方 cordis 面板之后（它没写 order，默认 0）。 */
+		const RUN_ORDER = 10;
+		/** 槽位挂载失败时的真实原因（设置页要说出来，不静默吞掉）。 */
+		const runStatusState = { mounted: false, reason: '' };
 		/**
 		 * 「显示模型信息」开关：默认开。和 `busyStore` 一样是极简外部 store，
 		 * 设置页的勾选框与那一行的 pill 都读它，改完立刻在两处生效（不用刷新）。
@@ -457,6 +484,8 @@ window.__ModuleLoader__.load({
 			'.dspro_readout{color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;font-variant-numeric:tabular-nums;white-space:nowrap}',
 			'.dspro_input{border-radius:var(--dsw-radius-sm);height:32px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-module-platform);border:.5px solid var(--dsw-alias-border-l2);padding:0 10px;font-family:inherit;font-size:13px;line-height:20px;min-width:200px}',
 			'.dspro_input:focus{outline:none;border-color:var(--dsw-alias-label-primary-bluish)}',
+			'.dspro_select{border-radius:var(--dsw-radius-sm);height:32px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-module-platform);border:.5px solid var(--dsw-alias-border-l2);padding:0 8px;font-family:inherit;font-size:13px;line-height:20px;max-width:280px}',
+			'.dspro_select:focus{outline:none;border-color:var(--dsw-alias-label-primary-bluish)}',
 			// 左上角 logo 下面那一行机器名：**兜底**用（槽位占位失败时才显示）。
 			'.' + MACHINE_CLASS + '{box-sizing:border-box;color:var(--dsw-alias-label-tertiary);padding:0 14px 6px 14px;font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;-webkit-user-select:none}',
 			// 顶掉官方品牌区后，那一行字就是「logo」本身：用户要 20px（2026-10-18）。
@@ -476,6 +505,9 @@ window.__ModuleLoader__.load({
 			// 字号一起放大的是行高/内距/圆点；行高只给 20px（药丸自己 2px 内距 = 24px 总高），
 // 因为官方 `_brandIdentity` 那个容器写死 `height:24px`，再高就会把整行撑变形。
 			'.' + RUN_CLASS + '{box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary);font-size:16px;font-weight:600;line-height:20px;white-space:nowrap;user-select:none;-webkit-user-select:none}',
+			// logo 上的更新箭头：warn 色、不占额外行高（品牌行只有 24px 行盒）。
+			'.' + UPDATE_CLASS + '{box-sizing:border-box;display:inline-flex;align-items:center;flex:none;margin-left:6px;color:var(--dsw-alias-state-warn-primary);cursor:help}',
+			'.' + UPDATE_CLASS + ' svg{display:block}',
 			'.' + RUN_DOT_CLASS + '{width:7px;height:7px;border-radius:50%;background:currentColor;animation:dsproRunPulse 1.4s ease-in-out infinite}',
 			// 空闲态：灰一点、不呼吸（只用确认存在的 token：state-idle 只有 primary 一档，背景留透明）。
 			'.' + RUN_CLASS + '[data-state="idle"]{background:transparent;color:var(--dsw-alias-state-idle-primary)}',
@@ -601,6 +633,12 @@ window.__ModuleLoader__.load({
 				tabsAria: '高级设置分区',
 				agentHeading: '模型能看到什么',
 				agentIntro: '这一组管的是模型侧：改完即时生效，不用重启 dsh。页面上人点的按钮不受影响。',
+				channelTitle: '更新通道',
+				channelDesc: '跟哪条线比。auto = 所有通道里最高那个；选具体通道就只跟那条线比（切换只重算，不重新打 registry）。',
+				channelAuto: 'auto（所有通道取最高）',
+				channelMissingPrefix: '⚠ 这个通道在 registry 里没有发布过：',
+				updateHoverPrefix: 'dsh 有更新：',
+				updateHoverChannel: '通道 ',
 				modelGroupTitle: '输入框下方那一行',
 				modelGroupIntro: '官方在那里显示「N 轮 N 步 · tok/s」和 token 用量。本插件在同一行**右边并列**加一格：供应商 · 模型 · 思考档位；官方那两条原样保留。',
 				modelPillShow: '显示模型信息',
@@ -715,6 +753,12 @@ window.__ModuleLoader__.load({
 				tabsAria: 'Advanced settings sections',
 				agentHeading: 'What models can see',
 				agentIntro: 'This group is about the model side: changes apply immediately, no dsh restart. The buttons you click on this page are unaffected.',
+				channelTitle: 'Update channel',
+				channelDesc: 'Which line to compare against. auto = the highest of all channels; a specific channel compares only against that one (switching recomputes locally, no new registry call).',
+				channelAuto: 'auto (highest of all channels)',
+				channelMissingPrefix: '⚠ That channel has no published version in the registry:',
+				updateHoverPrefix: 'dsh update available: ',
+				updateHoverChannel: 'channel ',
 				runIdleHover: 'No sessions are running',
 				modelGroupTitle: 'Composer stats row',
 				modelGroupIntro: 'The official UI shows “N turns N steps · tok/s” and token usage there. This plugin adds one cell on the SAME row, beside them: provider · model · thinking level — the two official pills stay untouched.',
@@ -961,6 +1005,100 @@ window.__ModuleLoader__.load({
 			const exposed = status === null || status === undefined || status.missing === true ? null : status.agentToolsExposed;
 			if (typeof exposed !== 'boolean') return 'dspro_note';
 			return exposed === (status.agentTools === true) ? 'dspro_note' : 'dspro_error';
+		}
+
+		/**
+		 * 「运行中」指示：挂在侧边栏**左下角** `sidebar.footer.action` 槽位（list 槽，scope root）。
+		 *
+		 * 2026-10-19 用户要求从左上角品牌行挪到这里。走槽位而不是 DOM 注入：
+		 * 官方那个槽位就是给「脚部动作」用的（cordis 面板也占它的 `id: cordis-panel`），
+		 * 由官方负责布局与 rail 折叠，我们不用自己算位置、也不会把品牌行挤变形。
+		 *
+		 * 两态常显（0.8.0 的语义不变）：忙 → 绿色「运行中 ×N」；闲 → 灰色「空闲」。
+		 * 数据仍读 `busyStore`（Host `/status` 口径，约束 21），**没读到过就不画**。
+		 * 已排程空闲重启时，文字后加一个橙色感叹号（2026-10-18 的要求）。
+		 */
+		/**
+		 * 「运行中」那一格该长什么样。纯函数：**判据（含「未知不画」）在这里**，
+		 * 组件只负责把结果变成节点 —— 这样探针能喂任意状态（包括「从没读到过」），
+		 * 不必跟模块级 `busyStore` 的当前值较劲。
+		 * @param state - `busyStore.get()` 或 `null`。
+		 * @param t - 字典函数。
+		 * @returns `null`（不画）或 `{ text, title, aria, state, armed }`。
+		 */
+		function describeChip(state, t) {
+			if (state === null || typeof state !== 'object' || state.known !== true) return null;
+			const busy = state.busy === true;
+			const count = typeof state.runningCount === 'number' ? state.runningCount : 0;
+			const armed = state.armed === true;
+			const text = busy
+				? t('runLabel') + (count > 1 ? ' ×' + String(count) : '')
+				: t('runIdleLabel');
+			const armedHint = armed ? '\n' + t('runArmedHover') : '';
+			let title;
+			if (busy) {
+				const hover = runningHoverText(state.sessions);
+				title = (hover === '' ? text : text + '\n' + hover) + armedHint;
+			} else {
+				title = t('runIdleHover') + armedHint;
+			}
+			return {
+				text,
+				title,
+				// 读屏拿不到悬停文本，把换行换成「；」拼进无障碍名。
+				aria: title.replace(/\n/gu, '；'),
+				state: busy ? 'running' : 'idle',
+				armed
+			};
+		}
+
+		function RunStatusChip({ t }) {
+			const state = React.useSyncExternalStore(
+				(listener) => busyStore.subscribe(listener),
+				() => busyStore.get()
+			);
+			const described = describeChip(state, t);
+			if (described === null) return null;
+			const { text, title, aria, armed } = described;
+			return h('span', {
+				className: RUN_CLASS,
+				'data-plugin': '@dongasai/dsh-setting-pro',
+				'data-state': described.state,
+				'data-armed': armed ? '1' : '0',
+				role: 'img',
+				// 非交互（点它不做事），所以不给 tabIndex；但读屏要能拿到含义与明细。
+				'aria-label': aria,
+				title
+			}, [
+				h('span', { key: 'dot', className: RUN_DOT_CLASS }),
+				h('span', { key: 'label', className: RUN_LABEL_CLASS }, text),
+				armed ? h('span', { key: 'bang', className: RUN_BANG_CLASS, 'aria-hidden': 'true' }, '!') : null
+			]);
+		}
+
+		/**
+		 * 把「运行中」挂到左下角 footer 槽位。
+		 * 失败只记原因、不抛（约束 24：槽位回调在声明那一刻跑，异常会连累别的插件）。
+		 */
+		function mountRunStatus(ctx, t) {
+			runStatusState.mounted = false;
+			runStatusState.reason = '';
+			ctx.slots.inject(FOOTER_SLOT, () => {
+				try {
+					ctx.slots.register({
+						name: FOOTER_SLOT,
+						id: RUN_ID,
+						order: RUN_ORDER,
+						label: () => t('runLabel'),
+						locale: NS
+					}, () => h(RunStatusChip, { t }));
+					runStatusState.mounted = true;
+					runStatusState.reason = '';
+				} catch (error) {
+					runStatusState.mounted = false;
+					runStatusState.reason = error instanceof Error ? error.message : String(error);
+				}
+			});
 		}
 
 		/**
@@ -1249,9 +1387,15 @@ window.__ModuleLoader__.load({
 		}
 
 		/** GET 版本状态；非 JSON（Host 半边没加载）与传输失败分开表示。 */
-		async function fetchVersion(refresh) {
+		async function fetchVersion(refresh, channel) {
 			try {
-				const response = await fetch(VERSION_URL + (refresh === true ? '?refresh=1' : ''), {
+				const params = new URLSearchParams();
+				if (refresh === true) params.set('refresh', '1');
+				if (typeof channel === 'string' && channel !== '' && channel !== CHANNEL_DEFAULT) {
+					params.set('channel', channel);
+				}
+				const query = params.toString();
+				const response = await fetch(VERSION_URL + (query === '' ? '' : '?' + query), {
 					headers: { accept: 'application/json' }
 				});
 				const type = String(response.headers.get('content-type') ?? '');
@@ -1261,6 +1405,110 @@ window.__ModuleLoader__.load({
 			} catch (error) {
 				return { error: error instanceof Error ? error.message : String(error) };
 			}
+		}
+
+		/**
+		 * 版本状态的共享 store：设置页的「DSH 版本」块与 logo 上的更新箭头**读同一份**。
+		 *
+		 * 为什么不能只放在 VersionBlock 里：那个组件只在「设置 → 高级设置」打开时挂载，
+		 * 而用户要的是**logo 处常驻**的箭头 —— 不开设置页也得知道有没有新版本。
+		 * 所以轮询在 apply() 里起一次，两块都只是订阅者。
+		 */
+		const versionStore = {
+			payload: null,
+			problem: '',
+			channel: CHANNEL_DEFAULT,
+			listeners: new Set(),
+			get() {
+				return versionStore.payload;
+			},
+			getProblem() {
+				return versionStore.problem;
+			},
+			getChannel() {
+				return versionStore.channel;
+			},
+			/** 换通道：立刻按新通道重读（Host 侧结论现算，不打 registry）。 */
+			setChannel(next) {
+				const channel = typeof next === 'string' && next.trim() !== '' ? next.trim() : CHANNEL_DEFAULT;
+				if (channel === versionStore.channel) return;
+				versionStore.channel = channel;
+				try {
+					window.localStorage.setItem(CHANNEL_KEY, channel);
+				} catch (error) {
+					/* 存不下也要当场切换：只是下次进页面回到默认通道 */
+				}
+				void versionStore.refresh(false);
+			},
+			initChannel() {
+				let saved = null;
+				try {
+					saved = window.localStorage.getItem(CHANNEL_KEY);
+				} catch (error) {
+					saved = null;
+				}
+				// 坏值 / 没存过 → 默认通道，不猜。
+				versionStore.channel = typeof saved === 'string' && saved.trim() !== '' ? saved.trim() : CHANNEL_DEFAULT;
+				return versionStore.channel;
+			},
+			/** 拉一次；`refresh` 为真时让 Host 强制重查 registry。 */
+			async refresh(refresh) {
+				const result = await fetchVersion(refresh === true, versionStore.channel);
+				if (result.missing === true) {
+					versionStore.payload = { missing: true };
+					versionStore.problem = '';
+				} else if (typeof result.error === 'string') {
+					// 传输失败：保留上一次的结果，只记错误（一次抖动不该把「有新版本」抹成「不知道」）。
+					versionStore.problem = result.error;
+				} else {
+					versionStore.payload = result.payload;
+					versionStore.problem = '';
+				}
+				for (const listener of [...versionStore.listeners]) listener();
+			},
+			subscribe(listener) {
+				versionStore.listeners.add(listener);
+				return () => versionStore.listeners.delete(listener);
+			}
+		};
+		versionStore.initChannel();
+
+		/**
+		 * 是否该在 logo 上标「有更新」：Host 报了新版本，且**当前版本读到了**。
+		 *
+		 * `current` 为 null 时（没找到 dsh 的 package.json）绝不标 —— 拿不到基准就没资格说
+		 * 「有更新」；那正是 2026-10-18 那个 bug 的形态（把 nvs 的 1.7.1 当 dsh 版本，
+		 * 于是永远「已是最新」，反过来也成立：基准不可信时任何结论都不可信）。
+		 * @param payload - versionStore 的载荷。
+		 * @returns 有可更新版本时返回 `{ version, tag }`，否则 null。
+		 */
+		function updateAvailable(payload) {
+			if (payload === null || typeof payload !== 'object' || payload.missing === true) return null;
+			if (payload.current === null || payload.current === undefined || payload.current === '') return null;
+			const newer = payload.newer;
+			if (newer === null || typeof newer !== 'object') return null;
+			if (typeof newer.version !== 'string' || newer.version === '') return null;
+			return { version: newer.version, tag: typeof newer.tag === 'string' ? newer.tag : '' };
+		}
+
+		/** 起一次版本轮询（apply 里调用；设置页不再自己查）。 */
+		function startVersionSource() {
+			let timer = null;
+			let disposed = false;
+			const tick = async () => {
+				if (disposed) return;
+				await versionStore.refresh(false);
+			};
+			timer = window.setInterval(() => {
+				void tick();
+			}, VERSION_POLL_MS);
+			void tick();
+			return {
+				dispose() {
+					disposed = true;
+					if (timer !== null) window.clearInterval(timer);
+				}
+			};
 		}
 
 		/** 各通道一行：`latest 0.2.0-rc.2 · alpha 0.2.1-alpha.5`。 */
@@ -1274,33 +1522,20 @@ window.__ModuleLoader__.load({
 		 * 有更新给一行提醒（warn 色）。检查结果在 Host 侧缓存 6 小时，按钮可强制重查。
 		 */
 		function VersionBlock({ t }) {
-			const [info, setInfo] = React.useState(null);
-			const [problem, setProblem] = React.useState('');
+			// 读共享的 versionStore（logo 上的箭头是同一份）：本块不再自己轮询，
+			// 也不再在挂载时查一次 —— 否则「打开设置页」和「看 logo」会给出两个结论。
+			const info = React.useSyncExternalStore(
+				(listener) => versionStore.subscribe(listener),
+				() => versionStore.get()
+			);
+			const problem = versionStore.getProblem();
 			const [checking, setChecking] = React.useState(false);
-			const tRef = React.useRef(t);
-			tRef.current = t;
 
 			const load = React.useCallback(async (refresh) => {
 				setChecking(true);
-				const result = await fetchVersion(refresh);
+				await versionStore.refresh(refresh);
 				setChecking(false);
-				if (result.missing === true) {
-					setInfo({ missing: true });
-					setProblem('');
-					return;
-				}
-				if (typeof result.error === 'string') {
-					setProblem(result.error);
-					return;
-				}
-				setProblem('');
-				setInfo(result.payload);
 			}, []);
-
-			// 打开页面即查一次（Host 侧 6 小时缓存，重复打开不会反复打 registry）。
-			React.useEffect(() => {
-				void load(false);
-			}, [load]);
 
 			const checkButton = h('button', {
 				key: 'action',
@@ -1312,7 +1547,7 @@ window.__ModuleLoader__.load({
 				}
 			}, checking ? t('opsWorking') : t('checkAction'));
 
-			if (info === null) {
+			if (info === null || info === undefined) {
 				return h('div', { className: 'dspro_group' }, [
 					h('h3', { key: 'heading', className: 'dspro_subheading' }, t('versionHeading')),
 					problem === ''
@@ -1335,6 +1570,24 @@ window.__ModuleLoader__.load({
 					key: 'readout',
 					className: 'dspro_readout'
 				}, current)),
+				// 通道选择：auto（所有通道取最高）+ registry 里实际存在的每个 dist-tag。
+				// 选项来自 `info.channels`（Host 现算），不写死 latest/next/alpha —— 将来多一条
+				// beta 线也不用改这里。切换是本地操作：Host 缓存的是原始 dist-tags，结论现算。
+				panelRow('channel', t('channelTitle'), t('channelDesc'), h('select', {
+					key: 'control',
+					className: 'dspro_select',
+					'aria-label': t('channelTitle'),
+					value: versionStore.getChannel(),
+					onChange: (event) => {
+						versionStore.setChannel(event.target.value);
+					}
+				}, [
+					h('option', { key: 'auto', value: CHANNEL_DEFAULT }, t('channelAuto')),
+					...(Array.isArray(info.channels) ? info.channels : []).map((tag) => h('option', {
+						key: tag,
+						value: tag
+					}, tag))
+				])),
 				panelRow('latest', t('latestTitle'), t('latestDescPrefix') + formatStartedAt(info.checkedAt ?? Date.now()) + (tagsLine === '' ? '' : ' · ' + tagsLine), h('span', {
 					key: 'control',
 					className: 'dspro_control'
@@ -1345,7 +1598,11 @@ window.__ModuleLoader__.load({
 			];
 
 			const lines = [];
-			if (info.newer !== null && info.newer !== undefined) {
+			if (info.channelMissing === true) {
+				// 你选的这条线根本没发布过：既不说「有新版本」也不说「已是最新」。
+				lines.push(h('p', { key: 'missingchannel', className: 'dspro_notice' },
+					t('channelMissingPrefix') + String(info.channelRequested ?? '?')));
+			} else if (info.newer !== null && info.newer !== undefined) {
 				lines.push(h('p', { key: 'newer', className: 'dspro_notice' },
 					'⚠ ' + t('versionNewerLabel') + ' · ' + String(info.newer.version) + ' (' + String(info.newer.tag) + ') · '
 					+ t('versionCurrentLabel') + ' ' + current + ' — ' + t('versionRestartHint')));
@@ -2031,7 +2288,7 @@ window.__ModuleLoader__.load({
 		 */
 		function startBrandExtras(t) {
 			let nameNode = null;
-			let runNode = null;
+			let updateNode = null;
 			let observer = null;
 			let domTimer = null;
 			let syncTimer = null;
@@ -2054,10 +2311,10 @@ window.__ModuleLoader__.load({
 					nameNode = null;
 				}
 			};
-			const removeRun = () => {
-				if (runNode !== null) {
-					runNode.remove();
-					runNode = null;
+			const removeUpdate = () => {
+				if (updateNode !== null) {
+					updateNode.remove();
+					updateNode = null;
 				}
 			};
 
@@ -2083,51 +2340,41 @@ window.__ModuleLoader__.load({
 					if (row.nextElementSibling !== nameNode) row.insertAdjacentElement('afterend', nameNode);
 				}
 
-				// ② 「运行中」指示（只在有会话在跑、且品牌身份在时）
-				const { busy, runningCount, sessions, armed, known } = busyStore.get();
-				// 状态未知（第一次读到之前）或侧边栏折叠：不画。
-				if (!known || identity === null) {
-					removeRun();
+				// ② 「有更新」箭头（向上）：挂在品牌身份之后。
+				// 「运行中」指示已迁到左下角 footer 槽位（见 RunStatusChip），这里只管更新提示。
+				// 判据来自共享的 versionStore —— 与设置页那块读同一份，两处不会给两个结论。
+				const pending = updateAvailable(versionStore.get());
+				if (pending === null || identity === null) {
+					removeUpdate();
 				} else {
-					if (runNode === null || runNode.isConnected !== true) {
-						runNode = document.createElement('span');
-						runNode.className = RUN_CLASS;
-						runNode.setAttribute('data-plugin', '@dongasai/dsh-setting-pro');
-						const dot = document.createElement('span');
-						dot.className = RUN_DOT_CLASS;
-						const label = document.createElement('span');
-						label.className = RUN_LABEL_CLASS;
-						runNode.append(dot, label);
+					if (updateNode === null || updateNode.isConnected !== true) {
+						updateNode = document.createElement('span');
+						updateNode.className = UPDATE_CLASS;
+						updateNode.setAttribute('data-plugin', '@dongasai/dsh-setting-pro');
+						// 读屏不靠这个箭头（含义在 title 里），所以 aria-hidden。
+						updateNode.setAttribute('aria-hidden', 'true');
+						// 先建 svg 再 append（别用 firstChild 取回：假 DOM 没有这个属性，
+						// 而真实 DOM 里靠 firstChild 取回也只是绕路）。
+						const svg = document.createElement('svg');
+						svg.setAttribute('viewBox', '0 0 16 16');
+						svg.setAttribute('width', '14');
+						svg.setAttribute('height', '14');
+						svg.setAttribute('fill', 'none');
+						const path = document.createElement('path');
+						path.setAttribute('d', 'M8 13V3.5M8 3.5 3.8 7.7M8 3.5l4.2 4.2');
+						path.setAttribute('stroke', 'currentColor');
+						path.setAttribute('stroke-width', '1.6');
+						path.setAttribute('stroke-linecap', 'round');
+						path.setAttribute('stroke-linejoin', 'round');
+						svg.append(path);
+						updateNode.append(svg);
 					}
-					runNode.setAttribute('data-state', busy ? 'running' : 'idle');
-					const text = busy
-						? t('runLabel') + (runningCount > 1 ? ' ×' + String(runningCount) : '')
-						: t('runIdleLabel');
-					const label = runNode.querySelector('.' + RUN_LABEL_CLASS);
-					if (label !== null && label.textContent !== text) label.textContent = text;
-					// 排程标记：文字后面一个橙色感叹号。单独一个 span 才能只给它 warn 色，
-					// 不污染忙时的绿底与闲时的灰字。**空闲但已排程也标** —— 那正是「马上要重启」，
-					// 不标就等于告诉用户没事发生。
-					const bang = runNode.querySelector('.' + RUN_BANG_CLASS);
-					if (armed && bang === null) {
-						const mark = document.createElement('span');
-						mark.className = RUN_BANG_CLASS;
-						mark.setAttribute('aria-hidden', 'true');
-						mark.textContent = '!';
-						runNode.append(mark);
-					} else if (!armed && bang !== null) {
-						bang.remove();
-					}
-					runNode.setAttribute('data-armed', armed ? '1' : '0');
-					const armedHint = armed ? '\n' + t('runArmedHover') : '';
-					if (busy) {
-						// 悬停：先一行计数，再每个在跑的会话一行「工作区 · 会话标题」；明细缺失就只留计数。
-						const hover = runningHoverText(sessions);
-						runNode.setAttribute('title', (hover === '' ? text : text + '\n' + hover) + armedHint);
-					} else {
-						runNode.setAttribute('title', t('runIdleHover') + armedHint);
-					}
-					if (identity.nextElementSibling !== runNode) identity.insertAdjacentElement('afterend', runNode);
+					const channel = String(versionStore.getChannel() ?? '');
+					const hover = t('updateHoverPrefix') + pending.version
+						+ (pending.tag === '' ? '' : ' (' + pending.tag + ')')
+						+ ' · ' + t('updateHoverChannel') + (channel === '' ? CHANNEL_DEFAULT : channel);
+					updateNode.setAttribute('title', hover);
+					if (identity.nextElementSibling !== updateNode) identity.insertAdjacentElement('afterend', updateNode);
 				}
 			};
 
@@ -2140,7 +2387,9 @@ window.__ModuleLoader__.load({
 			};
 
 			unsubscribes.push(machineNameStore.subscribe(scheduleSync));
-			unsubscribes.push(busyStore.subscribe(scheduleSync));
+			// 「运行中」已迁到左下角 footer 槽位（RunStatusChip 自己订阅 busyStore），这里不再订阅。
+			// 版本结论一变（轮询回来 / 用户换通道）就重画箭头。
+			unsubscribes.push(versionStore.subscribe(scheduleSync));
 			// MutationObserver 在所有现代浏览器都有；真没有就只靠定时器对齐（不致命）。
 			if (typeof MutationObserver === 'function') {
 				observer = new MutationObserver(scheduleSync);
@@ -2156,7 +2405,7 @@ window.__ModuleLoader__.load({
 					if (domTimer !== null) window.clearInterval(domTimer);
 					if (syncTimer !== null) window.clearTimeout(syncTimer);
 					removeName();
-					removeRun();
+					removeUpdate();
 				}
 			};
 		}
@@ -2191,6 +2440,14 @@ window.__ModuleLoader__.load({
 				return () => source.dispose();
 			}, 'setting-pro: busy source');
 
+			// 版本与更新通道：轮询 /version → versionStore（设置页那块与 logo 上的箭头读同一份）。
+			// 必须在 apply 里起，不能只挂在 VersionBlock 上 —— 那个组件只在打开设置页时挂载，
+			// 而用户要的是 logo 处**常驻**的更新箭头。
+			ctx.effect(() => {
+				const source = startVersionSource();
+				return () => source.dispose();
+			}, 'setting-pro: dsh version source');
+
 			// 品牌区占位（priority: -1 顶掉官方 logo）；失败则退回 DOM 小字。
 			ctx.effect(() => {
 				const brand = startBrandReplacement(ctx);
@@ -2201,7 +2458,16 @@ window.__ModuleLoader__.load({
 			ctx.effect(() => {
 				const extras = startBrandExtras(t);
 				return () => extras.dispose();
-			}, 'setting-pro: brand row extras (name fallback + running chip)');
+			}, 'setting-pro: brand row extras (name fallback + update arrow)');
+
+			// 「运行中」指示：左下角 footer 槽位（2026-10-19 从品牌行迁来）。
+			// 挂不上（老版本没这个槽 / 注册抛错）就什么都不画 —— 失败原因记在 runStatusState。
+			try {
+				mountRunStatus(ctx, t);
+			} catch (error) {
+				runStatusState.mounted = false;
+				runStatusState.reason = error instanceof Error ? error.message : String(error);
+			}
 
 			// 「性能与用量」那一行旁边加一格：供应商 · 模型 · 思考档位（list 槽，官方两条保留）。
 			// 挂不上（老版本 dsh 没这个槽 / 注册抛错）就什么都不画，设置页会说原因。
@@ -2229,8 +2495,14 @@ window.__ModuleLoader__.load({
 			probe: {
 				agentToolsSummary,
 				agentToolsClass,
+				describeChip,
 				settingsTabStore,
 				tabOfBlock,
+				versionStore,
+				updateAvailable,
+				UPDATE_CLASS,
+				CHANNEL_KEY,
+				CHANNEL_DEFAULT,
 				TABS,
 				describeModelState,
 				selectionOfProjection,
