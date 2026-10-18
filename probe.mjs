@@ -1055,6 +1055,18 @@ const { describeChip } = clientModule.probe;
 const chipDict = (dictionaries.get('dsh-setting-pro') ?? {}).zh ?? {};
 const chipT = (key) => (Object.prototype.hasOwnProperty.call(chipDict, key) ? chipDict[key] : 'MISSING:' + key);
 equal('运行指示判据: 还没读到过状态 → 不画（未知 ≠ 空闲）', describeChip(null, chipT), null);
+// ⚠️ React 18 的 useSyncExternalStore 要求 getSnapshot **返回缓存的同一引用**：
+// 每次新建对象会让它每帧判定「快照变了」→ 无限重渲染，生产环境表现为组件挂不上
+// （2026-10-19 用户实测「运行中没有出现在左下角」，而 427 项探针全绿 —— 假 React 不跑渲染循环）。
+const { busyStore } = clientModule.probe;
+const snapA = busyStore.get();
+const snapB = busyStore.get();
+check('运行指示: getSnapshot 连续两次返回同一引用（React 18 硬要求，否则挂不上）', snapA === snapB);
+busyStore.set({ busy: true, runningCount: 1, sessions: [], armed: false });
+const snapC = busyStore.get();
+check('运行指示: set() 之后换新快照（引用变化才是「变了」）', snapC !== snapA && snapC.busy === true);
+check('运行指示: 新快照立刻稳定（再读还是同一引用）', busyStore.get() === snapC);
+busyStore.set({ busy: false, runningCount: 0, sessions: [], armed: false });
 equal('运行指示判据: known=false 也不画（不猜一个「空闲」）',
 	describeChip({ busy: false, runningCount: 0, sessions: [], armed: false, known: false }, chipT), null);
 equal('运行指示判据: 忙且多个会话 → 带 ×N', describeChip({ busy: true, runningCount: 3, sessions: [], armed: false, known: true }, chipT).text, '运行中 ×3');

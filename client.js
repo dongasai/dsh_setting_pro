@@ -383,14 +383,27 @@ window.__ModuleLoader__.load({
 			/** 第一次成功读到 `/status` 之前是 false：状态未知就不画，别猜一个「空闲」给用户。 */
 			known: false,
 			listeners: new Set(),
+			/**
+			 * ⚠️ `get()` 必须返回**同一个对象引用**，直到真的变了（`_snapshot` 在 `set()` 里重建）。
+			 *
+			 * React 18 的 `useSyncExternalStore` 明确要求 getSnapshot 结果被缓存：每次新建对象
+			 * 会让它每渲染一次就判定「快照又变了」，于是无限重渲染 —— 开发模式下抛
+			 * “The result of getSnapshot should be cached to avoid an infinite loop”，
+			 * 生产模式下表现为组件**根本挂不上来**（2026-10-19 用户实测「运行中没有出现在左下角」）。
+			 * 假 React 只是直接调一次 `get()`，所以探针 427 项全绿也看不见这个坑。
+			 */
+			_snapshot: null,
 			get() {
-				return {
-					busy: busyStore.busy,
-					runningCount: busyStore.runningCount,
-					sessions: busyStore.sessions,
-					armed: busyStore.armed,
-					known: busyStore.known
-				};
+				if (busyStore._snapshot === null) {
+					busyStore._snapshot = {
+						busy: busyStore.busy,
+						runningCount: busyStore.runningCount,
+						sessions: busyStore.sessions,
+						armed: busyStore.armed,
+						known: busyStore.known
+					};
+				}
+				return busyStore._snapshot;
 			},
 			/** 把 sessions 拼成签名：busy/count 没变但标题变了，chip 的悬停文本也要跟上。 */
 			_signature() {
@@ -409,6 +422,8 @@ window.__ModuleLoader__.load({
 				busyStore.runningCount = count;
 				busyStore.sessions = sessions;
 				busyStore.armed = armed;
+				// 换一个新快照对象（引用变化才是 useSyncExternalStore 认的「变了」）。
+				busyStore._snapshot = null;
 				busyStore.known = true;
 				for (const listener of [...busyStore.listeners]) listener(busyStore.get());
 			},
@@ -2496,6 +2511,7 @@ window.__ModuleLoader__.load({
 				agentToolsSummary,
 				agentToolsClass,
 				describeChip,
+				busyStore,
 				settingsTabStore,
 				tabOfBlock,
 				versionStore,
