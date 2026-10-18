@@ -332,4 +332,4 @@ HTTP 处理函数里被调的，那个 effect 仍挂在**本插件的 fiber** �
 | [AGENTS.md](AGENTS.md) | 给 agent 的约束与改动连带项（25 条硬性约束） |
 | [index.js](index.js) | Host 半边：6 条路由 + 3 个工具 + 重启引擎 + 版本检查 + 机器名存取 |
 | [client.js](client.js) | 浏览器半边：CSS 覆盖、设置页、品牌区顶替、DOM 兜底、运行指示、那一行的模型格 |
-| [probe.mjs](probe.mjs) | 静态回归探针（334 项，不出网、不写真实状态文件） |
+| [probe.mjs](probe.mjs) | 静态回归探针（338 项，不出网、不写真实状态文件） |

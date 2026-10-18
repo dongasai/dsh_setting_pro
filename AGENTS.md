@@ -33,7 +33,7 @@
 | Host | [index.js](index.js) | 七条 HTTP 路由（status/restart/schedule/cancel/version/machine/agent-tools）+ 三个模型工具（带**网关注册/注销**） + 重启引擎：用 **cgroup 叶子**判定宿主与单元名、空闲闸、把重启交给游离的 systemd 临时单元；状态里带 `startedAt`/`uptimeMs`/`dshVersion`/`machineName`/`runningSessions`（标题按 sessionId 缓存 30s，因为 `sessionTitle.get` 每次折全量事件）；版本检查查 npm dist-tags（缓存 6h）；机器名字与「开放给 agent」开关落 `$DSH_HOME/setting-pro.json`（一个文件两个键，共用同一套合并写） |
 | 浏览器 | [client.js](client.js) | 注入覆盖面板几何的 CSS、注册 `settings.section` 页（尺寸三行 + 「Host 运维」三行 + 「机器名字」行 + 「输入框下方那一行」开关 + 「DSH 版本」块）、轮询 Host 状态、打开页面即查一次版本、忙时二次确认、重连后按 `bootId` 判断「重启完成」、用**槽位 `priority: -1` 顶掉官方品牌区**显示机器名（顶不掉才退回 DOM 小字）、在品牌身份后面挂**常驻状态指示**（忙：`运行中 ×N` + 悬停「工作区 · 会话标题」；空闲：灰色 `空闲`），并在 `conversation.composer.dock`（list 槽）**并列**加一格只读的 `供应商 · 模型 · 思考档位`（数据来自可选服务 `modelDirectories`，退路是会话投影 `modelSelection`，那时显示内部 id 并如实说明） |
 | 装配 | [cordis.patch.yml](cordis.patch.yml) / [package.json](package.json) | patch 插入条目 `id: setting-pro`；`dsh.bundle.patch` 指向 patch，`dsh.client` 声明 `platform` / `immediately` / `inject` |
-| 探针 | [probe.mjs](probe.mjs) | `node probe.mjs`：纯逻辑 + 路由/工具契约 + 版本比较/更新检查（假 fetch、假时钟）+ 机器名清洗与存取（假 fs）+ 浏览器组件假渲染 + **品牌区顶替与 DOM 兜底两条路**（假槽位/假 DOM）+ **状态指示**（假 /status + 手动触发轮询：忙/空闲两态与悬停明细）+ **模型格**（三段拼法与 id 退路、开关落盘与关掉后不渲染、挂不上时异常不外抛）+ **重启工具网关**（即时注册/注销、两个字段分开报）+ 产物形状，共 334 项；**不会真的重启、不出网、不写真实状态文件** |
+| 探针 | [probe.mjs](probe.mjs) | `node probe.mjs`：纯逻辑 + 路由/工具契约 + 版本比较/更新检查（假 fetch、假时钟）+ 机器名清洗与存取（假 fs）+ 浏览器组件假渲染 + **品牌区顶替与 DOM 兜底两条路**（假槽位/假 DOM）+ **状态指示**（假 /status + 手动触发轮询：忙/空闲两态与悬停明细）+ **模型格**（三段拼法与 id 退路、开关落盘与关掉后不渲染、挂不上时异常不外抛）+ **重启工具网关**（即时注册/注销、两个字段分开报）+ 产物形状，共 338 项；**不会真的重启、不出网、不写真实状态文件** |
 
 浏览器半边仍由 `@deepseek-ai/dsh-client-modules` 扫描 Host loader 条目、挑出声明了 `dsh.client` 的包后送进浏览器 ——
 `index.js` 里 `export const inject` / `apply` 的**存在本身**就是那条 loader 条目。
@@ -94,7 +94,7 @@ graph TD
 | --- | --- | --- |
 | [index.js](index.js) | Host 半边 | `parseServiceUnit` / `resolveUnit` / `describeHost`（**能不能重启的判据**）/ `detectSupervisor`（仅展示用）/ `restartUnitArgv` / `createIdleWatch` / `formatDuration` / `parseVersion` / `compareVersions` / `resolveDshVersion` / `summariseVersions` / `createVersionChecker` / `stateFilePath` / `sanitizeMachineName` / `createMachineStore` / **`describeRunningSession`**（纯函数，探针直接测）、`runningSessions()`（`basename(header.cwd)` + 可选 `sessionTitle` + `TITLE_TTL_MS` 缓存）、`createRestartControl`（可注入 `machine` store，探针用假 fs）、`registerRoutes`、**`createToolGate`（网关注册/注销 + 实时视图）**、**`describeAgentTools`**（纯函数）、`registerTools`（改收 `register` 回调）、`inject`、`apply` |
 | [client.js](client.js) | 浏览器半边 | `PANEL_SELECTOR`、`DEFAULTS`/`LIMITS`/`STEP`、`PANEL_CSS`、`PAGE_CSS`、`DICT`、`panelRow`、`opsPost`、`opsSummary`、`formatUptime`/`formatStartedAt`/`formatTags`、`fetchVersion`/`fetchMachine`、`HostOps`、`MachineNameBlock`、`VersionBlock`、**`MachineBrandMark`/`MachineBrandName`（品牌区顶替）、`startBrandReplacement`（priority -1 占位/撤销）、`startMachineNameSource`（名字来源）、`startBrandExtras`（DOM 兜底行 + 运行指示）、`startBusySource`/`busyStore`（状态源，含 `known`「未知不画」）、`runningHoverText`/`signatureOf`、`fetchStatus`**、`useMachineName`、**`describeModelState`/`selectionOfProjection`（纯函数，探针直接测）、`modelPillStore`（开关 + localStorage）、`createModelStoreResolver`（带缓存的可选服务解析）、`mountModelPill`（list 槽并列注册 + 回调内 try）、`ModelUsagePill`/`ModelPillBlock`**、**`agentToolsSummary`/`agentToolsClass`（「开放给 agent」那行的文案与配色）**、`AdvancedSection`、`apply`、`probe`（仅给探针的纯件导出） |
-| [probe.mjs](probe.mjs) | 静态回归探针 | **334 项 / 16 类**，写在 15 个 `#region` 区块里（`grep -c '^// #region' probe.mjs` → 15）：cgroup 解析、supervisor 探测、单元优先级、命令构造、空闲状态机、产物形状、路由/工具契约、浏览器组件假渲染（含**品牌区顶替与 DOM 兜底两条路**、**状态指示两态与悬停明细**）、宿主判据（describeHost）、最后启动时间、版本比较与更新检查（假 fetch/假时钟）、机器名字（假 fs）、**重启工具网关**（即时注册/注销、两个字段分开报）、**模型格**（三段拼法与内部 id 退路、开关落盘、注册抛错不外抛） |
+| [probe.mjs](probe.mjs) | 静态回归探针 | **338 项 / 16 类**，写在 15 个 `#region` 区块里（`grep -c '^// #region' probe.mjs` → 15）：cgroup 解析、supervisor 探测、单元优先级、命令构造、空闲状态机、产物形状、路由/工具契约、浏览器组件假渲染（含**品牌区顶替与 DOM 兜底两条路**、**状态指示两态与悬停明细**）、宿主判据（describeHost）、最后启动时间、版本比较与更新检查（假 fetch/假时钟）、机器名字（假 fs）、**重启工具网关**（即时注册/注销、两个字段分开报）、**模型格**（三段拼法与内部 id 退路、开关落盘、注册抛错不外抛） |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | 设计取舍 | 为什么用两个属性选择器覆盖几何、为什么不自己拉起进程、npx 判据坑、为什么看所有 dist-tag、为什么机器名用槽位 priority、那一行为什么并列而不顶替官方选择器、工具开关为什么能即时生效、一次「点重启」的完整路径 |
 | [cordis.patch.yml](cordis.patch.yml) | bundle patch | `insert: [{id: setting-pro, name: '@dongasai/dsh-setting-pro'}]` |
 | [package.json](package.json) | manifest | `dsh.bundle.patch`、`dsh.client.{platform,immediately,inject}` |
@@ -139,7 +139,7 @@ graph TD
 ## 测试策略
 
 **没有前端测试环境，也没有真的重启可以在仓库里跑通**：能自动验的只有宿主侧纯逻辑与契约，
-那正是 `probe.mjs` 覆盖的 **16 类**（334 项），分布在 15 个 `#region` 区块里
+那正是 `probe.mjs` 覆盖的 **16 类**（338 项），分布在 15 个 `#region` 区块里
 （`grep -c '^// #region' probe.mjs` → 15，其中第 8 块之后紧跟一块 `8b`）。**类号与区块号不是一一对应**：
 第 13、14 类（左上角、状态指示）的断言就写在第 8 块内部，末尾两块（区块 13、14）分别是第 15、16 类。
 
@@ -319,7 +319,7 @@ graph TD
 
 - 改 `index.js` 之前先读本文件「硬性约束」1–8；改 `client.js` 之前先读约束 9–14，动版本检查再看 15–17，
   动机器名 / logo 标签 / 运行指示看 18–22，动那一行的模型格看 23–24，动「开放给 agent」开关看 25。
-- 改完**必须**跑 `node probe.mjs`（334 项）+ `node --check` 两半；探针只证明「开火之前的形状对」，
+- 改完**必须**跑 `node probe.mjs`（338 项）+ `node --check` 两半；探针只证明「开火之前的形状对」，
   **不证明重启真的能成功、也不真的查 registry / 不真的写状态文件**（分别用假 ctx、假 fetch、假 fs）。
 - 本会话的 bash 在 bwrap 沙箱里：`systemctl --user` 连不上 user bus（`Failed to connect to bus`），
   `/proc/<宿主 pid>` 也看不到。所以**不要在沙箱里试着重启 dsh** —— 这也是本插件必须把重启放在
@@ -338,8 +338,11 @@ graph TD
   `0.5.0` = 机器名字（只显示在 logo 下一行）；`0.4.0` = 尺寸 + Host 重启 + 最后启动时间 + dsh 版本/更新提示；
   `0.3.0` = 重启与最后启动时间；`0.2.0` = 只有尺寸的独立「高级设置」页；
   `0.1.0` = 控制项塞在「通用」里的旧版。README 与探针里 `settings.general.item` 那条断言是相对旧版的。
-- 本仓库**已入库**（`main` + `.gitignore`，当前 tag `0.10`）：`git status` / `git log` 可用，
-  但**还没配远端**，`git push` 前要先 `git remote add`。提交信息仍按上面的中文约定格式。
+- 本仓库已入 git 且有远端：`origin = git@github.com:dongasai/dsh_setting_pro.git`，
+  分支 `main`（已设 upstream），当前 tag `0.10`（附注标签，指向 `package.json` 的 `0.10.0`）。
+  `git status` / `git log` 可用。提交信息按上面的中文约定格式；**发版三处一起动**：
+  `package.json` 的 `version`、git tag（裸版本号）、本文件与 README 的版本行。
+  提醒：首个 tag 是 `0.10`，0.1.0…0.9.0 没有 tag，只是文档里的版本阶梯。
 
 ## 变更记录 (Changelog)
 

@@ -8,8 +8,8 @@
     "path": "/data/ai/dsh/dsh_setting_pro",
     "package": "@dongasai/dsh-setting-pro",
     "version": "0.10.0",
-    "vcs": "none",
-    "note": "8 个源文件 + .gitignore（无子目录，单模块扁平结构）；已入 git（main，当前 tag 0.10），远端 git@github.com:dongasai/dsh_setting_pro.git"
+    "vcs": "git",
+    "note": "8 个源文件 + .gitignore（无子目录，单模块扁平结构）；已入 git，origin=git@github.com:dongasai/dsh_setting_pro.git，main 已设 upstream，首个 tag 0.10（附注，对应 0.10.0）"
   },
   "ignoreRules": {
     "source": "default",
@@ -134,7 +134,7 @@
         }
       ],
       "tests": [
-        "probe.mjs (334 项断言，node probe.mjs；15 个 #region 区块 = grep -c '^// #region' probe.mjs)"
+        "probe.mjs (338 项断言，node probe.mjs；15 个 #region 区块 = grep -c '^// #region' probe.mjs)"
       ],
       "qualityTooling": [
         "node --check (两半)",
@@ -254,11 +254,11 @@
     "真实浏览器里的观感（品牌区顶替后的排版、侧边栏折叠时的表现）只能靠页面确认；探针用的是假槽位与假 DOM",
     "那一行的模型格读的是官方面向内部插件的服务（modelDirectories / directory.store）与会话投影，属于**非公开契约**：官方换实现时这一格会退化成显示内部 id 或整格不显示（不报错，也不影响官方那两条 pill）",
     "「开放给 agent」开关对**已开场**的回合不追溯：工具列表是那次请求发给模型的，正在跑的那轮仍可能带着它调用（设计上如此，README 已知边界已写明）；未在真实页面上验证",
-    "git 仓库有 tag 0.10 但尚未推送远端；本仓库无 CI，push 前只能靠 node probe.mjs + node --check 两道门"
+    "本仓库无 CI：推送后没有任何自动检查，门只有本地的 node probe.mjs + node --check（改完必须手跑）"
   ],
   "nextSteps": [
     "重启一次 dsh（0.10.0 改了 index.js：第 7 条路由 + 工具网关）后刷新页面：Host 运维块出现「开放给 agent」勾选框，取消勾选后下面那行变「未开放（工具已注销）」，新回合里模型看不到 dsh_restart_*",
-    "推送 main 与 tag 0.10 到 origin（git@github.com:dongasai/dsh_setting_pro.git），之后 README 的 github:…#0.10 装法才可用",
+    "发版下一个功能时三处同步：package.json version → 新 tag（裸版本号，如 0.11）→ README 版本行与「当前 tag 是」两处（README 的 github:…#0.10 示例也要跟着改）",
     "若想保留小鱼图标只换文字：只占 sidebar.brand.name 一个槽（MachineBrandMark 不注册）"
   ]
 }

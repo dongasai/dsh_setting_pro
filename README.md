@@ -64,10 +64,10 @@ grep -n setting-pro ~/.dsh/profiles/web/package.json
 ls -l ~/.dsh/profiles/web/node_modules/@dongasai/   # 应有一条软链指回源码目录
 ```
 
-**③ git 源（发布到远端后）**：URL 后加 `#<tag|分支|commit>` 钉版本，**前缀必须是 `git+` 或 `github:`**：
+**③ git 源**（已发布：`git@github.com:dongasai/dsh_setting_pro.git`，当前 tag `0.10`）：URL 后加 `#<tag|分支|commit>` 钉版本，**前缀必须是 `git+` 或 `github:`**：
 
 ```bash
-dsh plugin --profile web add 'github:dongasai/dsh_setting_pro#<真实存在的 tag>'
+dsh plugin --profile web add 'github:dongasai/dsh_setting_pro#0.10'   # 当前 tag 是 0.10
 ```
 
 坑（三条都踩过）：
@@ -170,7 +170,7 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:3080/s
 | [client.js](client.js) | 浏览器半边：面板几何覆盖、`settings.section` 设置页（含「开放给 agent」开关）、品牌区顶替、DOM 兜底、状态轮询、那一行的模型格 |
 | [cordis.patch.yml](cordis.patch.yml) | bundle patch：只 `insert` 一行 `id: setting-pro` |
 | [package.json](package.json) | manifest：`dsh.bundle.patch` 指向 patch；`dsh.client` 声明 `platform/immediately/inject` |
-| [probe.mjs](probe.mjs) | 静态回归探针：`node probe.mjs`，**334 项**，不出网、不写真实状态文件 |
+| [probe.mjs](probe.mjs) | 静态回归探针：`node probe.mjs`，**338 项**，不出网、不写真实状态文件 |
 | [README.md](README.md) / [IMPLEMENTATION.md](IMPLEMENTATION.md) / [AGENTS.md](AGENTS.md) | 怎么用 / 为什么 / 给 agent 的约束 |
 
 **Host 半边注入的服务**（`index.js`）：`webServer`（挂路由）、`connection`（信任围栏）、
@@ -281,7 +281,7 @@ curl -s -X POST -H 'content-type: application/json' \
 ### 命令行能覆盖的部分
 
 ```bash
-# 0) 静态回归探针：334 项（宿主判据 / 命令构造 / 空闲状态机 / 路由契约 / 版本比较与更新检查 /
+# 0) 静态回归探针：338 项（宿主判据 / 命令构造 / 空闲状态机 / 路由契约 / 版本比较与更新检查 /
 #    机器名与开关的清洗存取（假 fs，不碰 ~/.dsh）/ 组件渲染 / 品牌区顶替与 DOM 兜底 /
 #    状态指示（忙·空闲·悬停明细）/ 模型格（三段拼法、id 退路、开关落盘、挂不上时不冒异常）/
 #    工具网关（即时注册注销、状态两个字段分开报、apply 不被注册失败带崩）/ 产物形状）
@@ -379,9 +379,10 @@ DSH 版本两条：
 - **更新提示只看 dist-tags，不替你升级**：不下载、不切通道、不改 profile。要知道「重启后是不是变成新版」，
   重启完再看一次当前版本。
 - **工具名 `dsh_restart_*` 由本插件占用**；装其它提供同名工具的重启类插件会撞名。
-- 本仓库**已入库**（`main` + `.gitignore`），但**还没有配远端**：上面的 git 装法要等你
-  `git remote add origin … && git push --follow-tags` 之后才可用。tag 用**裸版本号**（`0.10`，
-  与 `package.json` 的 `0.10.0` 对应），钉版本就写 `#0.10`。
+- 本仓库已入 git 并推到 `git@github.com:dongasai/dsh_setting_pro.git`（`main` + 附注标签 `0.10`）。
+  tag 用**裸版本号**：`0.10` ↔ `package.json` 的 `0.10.0`。
+- **第一个 tag 就是 `0.10`**，早期 0.1.0…0.9.0 只是文档里的版本阶梯（`0.1.0` 指「控制项塞在通用里」
+  的旧版），**没有对应 tag** —— 别按 tag 名推算功能顺序，也别去 `#0.9`（不存在）。
 
 ## 相关文件
 
@@ -389,7 +390,7 @@ DSH 版本两条：
 | --- | --- |
 | [index.js](index.js) | Host 半边（1453 行） |
 | [client.js](client.js) | 浏览器半边（1991 行） |
-| [probe.mjs](probe.mjs) | 静态回归探针（334 项） |
+| [probe.mjs](probe.mjs) | 静态回归探针（338 项） |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | 为什么这么实现 |
 | [AGENTS.md](AGENTS.md) | 给 agent 的约束（25 条硬性约束、改动连带项） |
 | [.agents/index.json](.agents/index.json) | 仓库扫描索引（模块、覆盖率、缺口、下一步） |
