@@ -1132,15 +1132,28 @@ function renderNode(node) {
 }
 
 const bound = (locale) => (key) => dict[locale][key];
-for (const locale of ['zh', 'en']) {
-	let tree = null;
-	try {
-		tree = settingsRegistration.component({ t: bound(locale) });
-	} catch (error) {
-		check('组件渲染（' + locale + '）不抛错', false, String(error && error.message ? error.message : error));
+/**
+ * 三个分区各渲染一遍。tab 状态走 store：假 React 的 `useState` setter 是空操作（切不动），
+ * 而 `useSyncExternalStore` 会真的调 `get`，所以 set 之后 component() 就渲染对应分区。
+ * `texts` 保持三分区**并集**（原有断言照旧成立）；`textsByTab` 分开存，用来断言隔离性。
+ */
+const textsByTab = { ui: [], host: [], agent: [] };
+for (const tabKey of ['ui', 'host', 'agent']) {
+	clientModule.probe.settingsTabStore.set(tabKey);
+	for (const locale of ['zh', 'en']) {
+		let tree = null;
+		try {
+			tree = settingsRegistration.component({ t: bound(locale) });
+		} catch (error) {
+			check('组件渲染（' + locale + ' / ' + tabKey + '）不抛错', false, String(error && error.message ? error.message : error));
+		}
+		if (tree === null) continue;
+		const before = texts.length;
+		renderNode(tree);
+		textsByTab[tabKey].push(...texts.slice(before).filter((item) => typeof item === 'string'));
 	}
-	if (tree !== null) renderNode(tree);
 }
+clientModule.probe.settingsTabStore.set('ui');
 
 check('组件树: 渲染出了「Host 运维」标题', texts.includes(dict.zh.opsHeading));
 check('组件树: 渲染出了「DSH 版本」标题', texts.includes(dict.zh.versionHeading));
@@ -1150,6 +1163,137 @@ check('组件树: 还没读到状态时那行说「不知道」（不说「未�
 check('组件树: 三个运维动作标签齐全', texts.includes(dict.zh.restartAction) && texts.includes(dict.zh.scheduleAction) && texts.includes(dict.zh.cancelAction));
 check('组件树: 尺寸三行仍在', texts.includes(dict.zh.widthTitle) && texts.includes(dict.zh.heightTitle) && texts.includes(dict.zh.resetTitle));
 check('组件树: 没有缺失的字典键', !texts.some((text) => text.startsWith('MISSING:')));
+
+// —— 分区（UI / Host / Agent）——
+// 归类只有一处真相 `tabOfBlock`；这里把每个块的归属钉死，以后加块必须显式选分区。
+const { tabOfBlock, settingsTabStore, TABS: tabKeys } = clientModule.probe;
+equal('分区: 尺寸归 UI', tabOfBlock('size'), 'ui');
+equal('分区: 机器名字归 UI（值存 Host，但改的是左上角界面）', tabOfBlock('machineName'), 'ui');
+equal('分区: 那一行的模型格归 UI（本机显示偏好）', tabOfBlock('modelPill'), 'ui');
+equal('分区: Host 运维归 Host', tabOfBlock('ops'), 'host');
+equal('分区: DSH 版本归 Host', tabOfBlock('version'), 'host');
+equal('分区: 开放给 agent 归 Agent', tabOfBlock('agentTools'), 'agent');
+equal('分区: 未知块默认落 Host（不会凭空冒出一个空分区）', tabOfBlock('nope'), 'host');
+deepEqual('分区: 恰好三个', tabKeys, ['ui', 'host', 'agent']);
+
+// 隔离性：每个分区的标题只出现在自己那一栏。
+const tabHeadings = {
+	ui: [dict.zh.widthTitle, dict.zh.machineTitle, dict.zh.modelGroupTitle],
+	host: [dict.zh.opsHeading, dict.zh.versionHeading],
+	agent: [dict.zh.agentHeading]
+};
+for (const [tabKey, headings] of Object.entries(tabHeadings)) {
+	for (const heading of headings) {
+		check('分区[' + tabKey + ']: 渲染出自己的块「' + heading + '」', textsByTab[tabKey].includes(heading));
+	}
+}
+check('分区[ui]: 不含 Host 运维标题', !textsByTab.ui.includes(dict.zh.opsHeading));
+check('分区[ui]: 不含 Agent 标题', !textsByTab.ui.includes(dict.zh.agentHeading));
+check('分区[host]: 不含 Agent 标题（模型侧的东西不混进 Host）', !textsByTab.host.includes(dict.zh.agentHeading));
+check('分区[host]: 不含尺寸行', !textsByTab.host.includes(dict.zh.widthTitle));
+check('分区[agent]: 不含运维按钮（人点的动作不混进模型侧）', !textsByTab.agent.includes(dict.zh.restartAction));
+check('分区[agent]: 有「开放给 agent」那一行', textsByTab.agent.includes(dict.zh.agentToolsTitle));
+check('分区[agent]: 还没读到状态时那行说「不知道」', textsByTab.agent.includes(dict.zh.agentToolsUnknown));
+
+// tab 条本身：三个按钮 + 选中态
+check('分区: tab 条渲染出三个标签',
+	texts.includes(dict.zh.tabUi) && texts.includes(dict.zh.tabHost) && texts.includes(dict.zh.tabAgent));
+// tab 条的 a11y 属性在 props 上，`texts` 只收 children —— 得真的遍历渲染树看。
+/** 切到某个分区后渲染一次，返回组件树。 */
+const treeFor = (tabKey) => {
+	settingsTabStore.set(tabKey);
+	return settingsRegistration.component({ t: bound('zh') });
+};
+/** 从渲染树里找出 tablist 那一层（a11y 属性在 props 上，`texts` 只收 children）。 */
+const findTablist = (node) => {
+	const stack = [node];
+	while (stack.length > 0) {
+		const item = stack.pop();
+		if (Array.isArray(item)) {
+			stack.push(...item);
+			continue;
+		}
+		if (item === null || typeof item !== 'object') continue;
+		if (item.props !== undefined && item.props.role === 'tablist') return item;
+		stack.push(...(item.children ?? []));
+	}
+	return null;
+};
+const tabTree = (() => {
+	const rendered = treeFor('host');
+	const stack = [rendered];
+	while (stack.length > 0) {
+		const node = stack.pop();
+		if (Array.isArray(node)) {
+			stack.push(...node);
+			continue;
+		}
+		if (node === null || typeof node !== 'object') continue;
+		if (node.props !== undefined && node.props.role === 'tablist') return node;
+		stack.push(...(node.children ?? []));
+	}
+	return null;
+})();
+check('分区: 渲染出 role="tablist" 的容器', tabTree !== null);
+if (tabTree !== null) {
+	equal('分区: tablist 有 aria-label（读屏知道这是一组切换）', tabTree.props['aria-label'], dict.zh.tabsAria);
+	const tabButtons = (tabTree.children ?? []).flat();
+	equal('分区: tablist 里三个 tab', tabButtons.length, 3);
+	check('分区: 每个 tab 都是 role=tab 且有 aria-selected',
+		tabButtons.every((button) => button.props.role === 'tab'
+			&& (button.props['aria-selected'] === 'true' || button.props['aria-selected'] === 'false')));
+	// 选中态必须跟着 store 走（不是写死第一个）：换 store 值重渲染再比对。
+	const selectedOf = (key) => {
+		const list = findTablist(treeFor(key));
+		if (list === null) return '';
+		return (list.children ?? []).flat().map((b) => b.props['aria-selected']).join(',');
+	};
+	equal('分区: 选中态跟随 store（ui）', selectedOf('ui'), 'true,false,false');
+	equal('分区: 选中态跟随 store（host）', selectedOf('host'), 'false,true,false');
+	equal('分区: 选中态跟随 store（agent）', selectedOf('agent'), 'false,false,true');
+}
+
+// store 行为：默认 UI、合法值切换、坏值不污染
+// 选中的分区是**浏览器偏好**（跟面板尺寸同类）：写 localStorage，下次进页面还在。
+const TAB_STORAGE_KEY = 'dsh.setting-pro.tab';
+settingsTabStore.set('agent');
+equal('分区: 能切到 Agent', settingsTabStore.get(), 'agent');
+equal('分区: 切换写进 localStorage（键名是对外契约）', storage.get(TAB_STORAGE_KEY), 'agent');
+// 模拟重新进页面：init() 该从 localStorage 恢复
+settingsTabStore.set('ui');
+storage.set(TAB_STORAGE_KEY, 'host');
+equal('分区: init() 恢复上次选中的分区', settingsTabStore.init(), 'host');
+// 坏值 / 没存过 → 退回 UI，不猜一个不存在的分区
+storage.set(TAB_STORAGE_KEY, '不存在的分区');
+equal('分区: init() 遇到坏值退回 UI', settingsTabStore.init(), 'ui');
+storage.delete(TAB_STORAGE_KEY);
+equal('分区: init() 没存过时是 UI', settingsTabStore.init(), 'ui');
+// set() 自己也挡坏值（不依赖 init）
+settingsTabStore.set('乱来的值');
+equal('分区: set() 挡坏值（不写进 localStorage）', settingsTabStore.get(), 'ui');
+let tabNotified = 0;
+const offTab = settingsTabStore.subscribe(() => {
+	tabNotified += 1;
+});
+settingsTabStore.set('host');
+settingsTabStore.set('host'); // 同值不该再通知
+equal('分区: 变化才通知订阅者（同值不重复刷）', tabNotified, 1);
+offTab();
+settingsTabStore.set('ui');
+equal('分区: 退订后不再通知', tabNotified, 1);
+
+// tab 条有样式（否则界面上是三个浏览器默认裸按钮）。CSS 是注入的字符串、
+// 假 DOM 不看样式，所以只能像字号那样做源码断言。
+check('分区: tab 条有 CSS 规则', clientSource.includes(".dspro_tabs{") && clientSource.includes(".dspro_tab{"));
+check('分区: 选中态有 CSS（aria-selected 驱动，不靠 JS 改 class）',
+	clientSource.includes('.dspro_tab[aria-selected="true"]'));
+check('分区: tab 样式只用主题 token，不写死色值',
+	!/\.dspro_tab[s]?\{[^}]*#[0-9a-f]{3,6}/iu.test(clientSource)
+	&& !/\.dspro_tab[s]?\{[^}]*rgb\(/iu.test(clientSource));
+
+// 两块共享同一份 /status：轮询只能起一次（否则每 2s 两份请求）
+check('两 tab 共享一份 /status 轮询（OPS_POLL_MS 只出现在一处 setInterval）',
+	(clientSource.match(/setInterval\([^)]*OPS_POLL_MS/gu) ?? []).length === 1);
 
 // 组件初始 status 是 null，上面的渲染只走到「读取中」；把源码里**所有** t('key') 抽出来
 // 逐个核对，才能覆盖状态行 / 错误行那些只在有状态时才渲染的文案键。

@@ -165,6 +165,81 @@ window.__ModuleLoader__.load({
 				return () => modelPillStore.listeners.delete(listener);
 			}
 		};
+
+		/**
+		 * 「高级设置」这一页的分区（UI / Host / Agent）。
+		 *
+		 * 做成 store 而不是 `useState`：假 React 的 `useState` setter 是空操作（切不了态），
+		 * 而 `useSyncExternalStore` 会真的调 `get` —— 这样探针能把每个分区都渲染出来逐个断言。
+		 * 选中的分区是**浏览器偏好**（跟面板尺寸同类：看的是「这台机器上我想停在哪一页」），
+		 * 所以存 localStorage，不存 Host。
+		 */
+		const TAB_KEY = 'dsh.setting-pro.tab';
+		const TABS = ['ui', 'host', 'agent'];
+		const settingsTabStore = {
+			value: 'ui',
+			listeners: new Set(),
+			get() {
+				return settingsTabStore.value;
+			},
+			set(next) {
+				const tab = TABS.includes(next) ? next : 'ui';
+				if (tab === settingsTabStore.value) return;
+				settingsTabStore.value = tab;
+				try {
+					window.localStorage.setItem(TAB_KEY, tab);
+				} catch (error) {
+					/* 存不下也要当场切换：只是下次进页面回到默认（UI） */
+				}
+				for (const listener of [...settingsTabStore.listeners]) listener(tab);
+			},
+			subscribe(listener) {
+				settingsTabStore.listeners.add(listener);
+				return () => settingsTabStore.listeners.delete(listener);
+			},
+			/**
+			 * 从 localStorage 读初值。
+			 *
+			 * ⚠️ 必须**无条件**赋值：合法值用它，坏值 / 读不到 / 没存过一律落 'ui'。
+			 * 早期写成「只有合法才赋值」，于是残留的旧值会冒充「恢复成功」——
+			 * 用户把 localStorage 改成乱码时，界面停在一个他并没有选过的分区上。
+			 */
+			init() {
+				let saved = null;
+				try {
+					saved = window.localStorage.getItem(TAB_KEY);
+				} catch (error) {
+					saved = null;
+				}
+				settingsTabStore.value = TABS.includes(saved) ? saved : 'ui';
+				return settingsTabStore.value;
+			}
+		};
+		settingsTabStore.init();
+
+		/**
+		 * 每个块属于哪个分区。纯函数，探针直接测 —— 归类是这轮唯一的新逻辑，
+		 * 值得钉住：以后加块时必须显式选一个分区，落到 `host` 之外会被断言发现。
+		 * @param block - 块名。
+		 * @returns 'ui' | 'host' | 'agent'。
+		 */
+		function tabOfBlock(block) {
+			switch (block) {
+				case 'size':
+				case 'machineName':
+				// 名字存 Host，但它改的是**界面**（左上角品牌区），所以归 UI。
+				case 'modelPill':
+				// 那一格显不显示只影响本机屏幕 → 浏览器偏好，归 UI。
+					return 'ui';
+				case 'agentTools':
+				// 开关存 Host、影响的是模型能看到什么 → 归 Agent，不放 Host（否则和「人点的按钮」混在一起）。
+					return 'agent';
+				case 'ops':
+				case 'version':
+				default:
+					return 'host';
+			}
+		}
 		/**
 		 * 从会话投影里取当前选择（`modelDirectories` 服务不可用时的退路）。
 		 * 官方 ModelSelect 用的就是 `next ?? lastUsed`（`next` 是已落到会话上的选择）。
@@ -367,6 +442,14 @@ window.__ModuleLoader__.load({
 			'.dspro_action:hover{background:var(--dsw-alias-interactive-bg-hover)}',
 			'.dspro_action:disabled{color:var(--dsw-alias-label-caption);cursor:default;background:var(--dsw-alias-bg-module-platform)}',
 			'.dspro_group{border-top:.5px solid var(--dsw-alias-border-l2);margin-top:8px;padding-top:16px;flex-direction:column;gap:12px;display:flex}',
+			// 分区切换条：三个 tab。只用确认存在的 token（本机实测 label-*、border-l2、
+			// interactive-bg-hover、--dsw-radius-sm 都在本文件其它地方用过），不写死色值。
+			'.dspro_tabs{border-bottom:.5px solid var(--dsw-alias-border-l2);flex-direction:row;gap:4px;display:flex}',
+			'.dspro_tab{border-bottom:2px solid transparent;color:var(--dsw-alias-label-secondary);background:transparent;border-top:none;border-left:none;border-right:none;border-radius:var(--dsw-radius-sm);cursor:pointer;padding:6px 12px;font-family:inherit;font-size:13px;line-height:20px;display:inline-flex}',
+			'.dspro_tab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+			'.dspro_tab[aria-selected="true"]{border-bottom-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary);font-weight:600}',
+			// 每个分区第一块自带上边框，会和 tab 条的下边框叠成双线 —— 首块去掉。
+			'.dspro_tabs+.dspro_group{border-top:none;margin-top:0}',
 			'.dspro_subheading{margin:0;font-size:15px;font-weight:600;color:var(--dsw-alias-label-primary)}',
 			'.dspro_note{color:var(--dsw-alias-label-secondary);margin:0;font-size:12px;line-height:18px}',
 			'.dspro_error{color:var(--dsw-alias-state-error-primary);margin:0;font-size:12px;line-height:18px}',
@@ -512,6 +595,12 @@ window.__ModuleLoader__.load({
 				runIdleLabel: '空闲',
 				runIdleHover: '当前没有会话在运行',
 				runArmedHover: '已排程：等所有会话空闲后重启 DSH',
+				tabUi: 'UI',
+				tabHost: 'Host',
+				tabAgent: 'Agent',
+				tabsAria: '高级设置分区',
+				agentHeading: '模型能看到什么',
+				agentIntro: '这一组管的是模型侧：改完即时生效，不用重启 dsh。页面上人点的按钮不受影响。',
 				modelGroupTitle: '输入框下方那一行',
 				modelGroupIntro: '官方在那里显示「N 轮 N 步 · tok/s」和 token 用量。本插件在同一行**右边并列**加一格：供应商 · 模型 · 思考档位；官方那两条原样保留。',
 				modelPillShow: '显示模型信息',
@@ -620,6 +709,12 @@ window.__ModuleLoader__.load({
 				runLabel: 'RUNNING',
 				runIdleLabel: 'IDLE',
 				runArmedHover: 'Scheduled: dsh restarts once every session is idle',
+				tabUi: 'UI',
+				tabHost: 'Host',
+				tabAgent: 'Agent',
+				tabsAria: 'Advanced settings sections',
+				agentHeading: 'What models can see',
+				agentIntro: 'This group is about the model side: changes apply immediately, no dsh restart. The buttons you click on this page are unaffected.',
 				runIdleHover: 'No sessions are running',
 				modelGroupTitle: 'Composer stats row',
 				modelGroupIntro: 'The official UI shows “N turns N steps · tok/s” and token usage there. This plugin adds one cell on the SAME row, beside them: provider · model · thinking level — the two official pills stay untouched.',
@@ -874,48 +969,15 @@ window.__ModuleLoader__.load({
 		 * 三个动作都打 Host 半边的路由；忙时「立即重启」拿回 409，界面用一次
 		 * `window.confirm` 做二次确认，再把 `force: true` 发过去。
 		 * 发起重启时把当前 `bootId` 记进 localStorage，重连后 bootId 变了就提示「重启完成」。
+		 *
+		 * 状态与提示都读**共享的** `hostStatusStore`（见 `useHostStatus`）：本块与
+		 * 「开放给 agent」块分属两个 tab，各自轮询会变成两份 2s 请求。
 		 */
 		function HostOps({ t }) {
-			const [status, setStatus] = React.useState(null);
+			const { status, note, refresh } = useHostStatus();
 			const [busyAction, setBusyAction] = React.useState('');
-			const [note, setNote] = React.useState('');
 			const [failure, setFailure] = React.useState('');
-			const tRef = React.useRef(t);
-			tRef.current = t;
-
-			const refresh = React.useCallback(async () => {
-				const result = await fetchStatus();
-				if (result.missing === true) {
-					setStatus({ missing: true, supported: false, armed: false });
-					return null;
-				}
-				if (result.payload === undefined) return null;
-				setStatus(result.payload);
-				return result.payload;
-			}, []);
-
-			React.useEffect(() => {
-				let alive = true;
-				const tick = async () => {
-					const snapshot = await refresh();
-					if (!alive || snapshot === null) return;
-					try {
-						const pending = window.localStorage.getItem(PENDING_KEY);
-						if (pending !== null && pending !== '' && pending !== snapshot.bootId) {
-							window.localStorage.removeItem(PENDING_KEY);
-							setNote(tRef.current('opsDone'));
-						}
-					} catch (error) {
-						/* 隐私模式：只是不提示「重启完成」 */
-					}
-				};
-				void tick();
-				const timer = window.setInterval(tick, OPS_POLL_MS);
-				return () => {
-					alive = false;
-					window.clearInterval(timer);
-				};
-			}, [refresh]);
+			useHostStatusPolling(t);
 
 			/** 记下这一代的 bootId：下次读到不同的 bootId 即「重启完成」。 */
 			const markPending = (snapshot) => {
@@ -924,7 +986,7 @@ window.__ModuleLoader__.load({
 						window.localStorage.setItem(PENDING_KEY, snapshot.bootId);
 					}
 				} catch (error) {
-					/* 同上 */
+					/* 隐私模式：只是不提示「重启完成」 */
 				}
 			};
 
@@ -932,7 +994,7 @@ window.__ModuleLoader__.load({
 			const restart = async (force) => {
 				setBusyAction('restart');
 				setFailure('');
-				setNote('');
+				hostStatusStore.setNote('');
 				const result = await opsPost(RESTART_URL, force ? { force: true } : {});
 				setBusyAction('');
 				if (result.status === 0) {
@@ -952,7 +1014,7 @@ window.__ModuleLoader__.load({
 					return;
 				}
 				markPending(status);
-				setNote(t('opsFired'));
+				hostStatusStore.setNote(t('opsFired'));
 				void refresh();
 			};
 
@@ -963,7 +1025,7 @@ window.__ModuleLoader__.load({
 			const simple = async (action, url, okKey) => {
 				setBusyAction(action);
 				setFailure('');
-				setNote('');
+				hostStatusStore.setNote('');
 				const result = await opsPost(url, {});
 				setBusyAction('');
 				if (result.status === 0) {
@@ -975,30 +1037,7 @@ window.__ModuleLoader__.load({
 					return;
 				}
 				const already = action === 'schedule' && result.payload !== null && result.payload.already === true;
-				setNote(already ? t('opsScheduledAlready') : t(okKey));
-				void refresh();
-			};
-
-			/**
-			 * 切换「是否把重启工具开放给 agent」。POST 完**立刻重读 /status**：
-			 * 界面显示的是 Host 报回来的实际注册状态，而不是我们刚发过去的那个布尔。
-			 */
-			const setAgentTools = async (enabled) => {
-				setBusyAction('agentTools');
-				setFailure('');
-				setNote('');
-				const result = await opsPost(AGENT_TOOLS_URL, { enabled });
-				setBusyAction('');
-				if (result.status === 0) {
-					setFailure(result.missing === true ? t('opsMissing') : t('opsTransport'));
-					return;
-				}
-				if (result.status >= 400) {
-					setFailure(t('opsErrorPrefix') + describeFailure(result.status, result.payload));
-					void refresh();
-					return;
-				}
-				setNote(enabled === true ? t('agentToolsOpened') : t('agentToolsClosed'));
+				hostStatusStore.setNote(already ? t('opsScheduledAlready') : t(okKey));
 				void refresh();
 			};
 
@@ -1034,21 +1073,65 @@ window.__ModuleLoader__.load({
 						onClick: () => {
 							void simple('cancel', CANCEL_URL, 'opsCanceled');
 						}
-					}, busyAction === 'cancel' ? t('opsWorking') : t('cancelAction'))),
-					// 「开放给 agent」这一行读的是 /status 里那两个字段（每 2s 已在刷），
-					// 不再单独 GET：两处显示同一份真相，不会出现「勾着但没挂上」却看不出来。
+					}, busyAction === 'cancel' ? t('opsWorking') : t('cancelAction')))
+				]),
+				h('p', { key: 'status', className: 'dspro_note' }, opsSummary(status, t)),
+				failure === '' ? null : h('p', { key: 'failure', className: 'dspro_error' }, failure),
+				note === '' ? null : h('p', { key: 'note', className: 'dspro_note' }, note)
+			]);
+		}
+
+		/**
+		 * 「开放给 agent」块：模型能不能看到那三个重启工具。
+		 *
+		 * 单独一个 tab，不塞进「Host 运维」：那一组是**人点的按钮**，这一组管的是
+		 * **模型能看到什么**，读者不一样。数据读共享的 `/status`（`agentTools` 是开关值、
+		 * `agentToolsExposed` 是实际注册状态），不额外发请求。
+		 */
+		function AgentToolsBlock({ t }) {
+			const { status, note, refresh } = useHostStatus();
+			const [busy, setBusy] = React.useState(false);
+			const [failure, setFailure] = React.useState('');
+			useHostStatusPolling(t);
+
+			/**
+			 * 切换开关。POST 完**立刻重读 /status**：界面显示的是 Host 报回来的实际注册
+			 * 状态，而不是我们刚发过去的那个布尔。
+			 */
+			const setAgentTools = async (enabled) => {
+				setBusy(true);
+				setFailure('');
+				hostStatusStore.setNote('');
+				const result = await opsPost(AGENT_TOOLS_URL, { enabled });
+				setBusy(false);
+				if (result.status === 0) {
+					setFailure(result.missing === true ? t('opsMissing') : t('opsTransport'));
+					return;
+				}
+				if (result.status >= 400) {
+					setFailure(t('opsErrorPrefix') + describeFailure(result.status, result.payload));
+					void refresh();
+					return;
+				}
+				hostStatusStore.setNote(enabled === true ? t('agentToolsOpened') : t('agentToolsClosed'));
+				void refresh();
+			};
+
+			return h('div', { className: 'dspro_group' }, [
+				h('h3', { key: 'heading', className: 'dspro_subheading' }, t('agentHeading')),
+				h('p', { key: 'intro', className: 'dspro_intro' }, t('agentIntro')),
+				h('div', { key: 'rows', className: 'dspro_rows' }, [
 					panelRow('agentTools', t('agentToolsTitle'), t('agentToolsDesc'), h('input', {
 						type: 'checkbox',
 						className: 'dspro_checkbox',
 						checked: status !== null && status.agentTools === true,
-						disabled: working,
+						disabled: busy,
 						'aria-label': t('agentToolsTitle'),
 						onChange: (event) => {
 							void setAgentTools(event.target.checked === true);
 						}
 					}))
 				]),
-				h('p', { key: 'status', className: 'dspro_note' }, opsSummary(status, t)),
 				h('p', { key: 'agentToolsState', className: agentToolsClass(status) }, agentToolsSummary(status, t)),
 				failure === '' ? null : h('p', { key: 'failure', className: 'dspro_error' }, failure),
 				note === '' ? null : h('p', { key: 'note', className: 'dspro_note' }, note)
@@ -1066,6 +1149,103 @@ window.__ModuleLoader__.load({
 			} catch (error) {
 				return { error: error instanceof Error ? error.message : String(error) };
 			}
+		}
+
+		/**
+		 * Host `/status` 的共享快照。
+		 *
+		 * 「Host 运维」块与「开放给 agent」块都要读它（后者要显示实际注册状态）。
+		 * 各自轮询会变成两份 2s 请求，所以轮询只起一次、两块共读一份。
+		 * 与 `busyStore` 同理：做成 store 而不是组件内 `useState`，探针才能直接喂状态。
+		 */
+		const hostStatusStore = {
+			value: null,
+			note: '',
+			listeners: new Set(),
+			get() {
+				return hostStatusStore.value;
+			},
+			getNote() {
+				return hostStatusStore.note;
+			},
+			setNote(text) {
+				hostStatusStore.note = typeof text === 'string' ? text : '';
+				for (const listener of [...hostStatusStore.listeners]) listener();
+			},
+			set(next) {
+				hostStatusStore.value = next;
+				for (const listener of [...hostStatusStore.listeners]) listener();
+			},
+			subscribe(listener) {
+				hostStatusStore.listeners.add(listener);
+				return () => hostStatusStore.listeners.delete(listener);
+			}
+		};
+
+		/** 轮询的共享状态（模块级，配合下面的引用计数）。 */
+		const hostStatusPolling = { count: 0, timer: null, refresh: null };
+
+		/**
+		 * 起一次 `/status` 轮询（引用计数：两块都挂载也只有一份定时器）。
+		 * @param t - 字典函数（用于「重启完成」那句提示）。
+		 * @returns 停止轮询的函数（计数归零时才真的停）。
+		 */
+		function useHostStatusPolling(t) {
+			const tRef = React.useRef(t);
+			tRef.current = t;
+			React.useEffect(() => {
+				const refresh = async () => {
+					const result = await fetchStatus();
+					if (result.missing === true) {
+						hostStatusStore.set({ missing: true, supported: false, armed: false });
+						return null;
+					}
+					if (result.payload === undefined) return null;
+					hostStatusStore.set(result.payload);
+					return result.payload;
+				};
+				hostStatusPolling.refresh = refresh;
+				hostStatusPolling.count += 1;
+				if (hostStatusPolling.timer === null) {
+					const tick = async () => {
+						const snapshot = await refresh();
+						if (snapshot === null) return;
+						try {
+							const pending = window.localStorage.getItem(PENDING_KEY);
+							if (pending !== null && pending !== '' && pending !== snapshot.bootId) {
+								window.localStorage.removeItem(PENDING_KEY);
+								hostStatusStore.setNote(tRef.current('opsDone'));
+							}
+						} catch (error) {
+							/* 隐私模式：只是不提示「重启完成」 */
+						}
+					};
+					void tick();
+					hostStatusPolling.timer = window.setInterval(tick, OPS_POLL_MS);
+				}
+				return () => {
+					hostStatusPolling.count -= 1;
+					if (hostStatusPolling.count > 0) return;
+					if (hostStatusPolling.timer !== null) {
+						window.clearInterval(hostStatusPolling.timer);
+						hostStatusPolling.timer = null;
+					}
+					hostStatusPolling.refresh = null;
+				};
+			}, []);
+		}
+
+		/** 读共享快照；POST 完调用返回值里的 refresh 立刻重读（显示 Host 报回来的真实状态）。 */
+		function useHostStatus() {
+			const snapshot = React.useSyncExternalStore(
+				(listener) => hostStatusStore.subscribe(listener),
+				() => hostStatusStore.get()
+			);
+			return {
+				status: snapshot === undefined ? null : snapshot,
+				note: hostStatusStore.getNote(),
+				refresh: async () => (hostStatusPolling.refresh === null ? null : hostStatusPolling.refresh())
+			};
 		}
 
 		/** GET 版本状态；非 JSON（Host 半边没加载）与传输失败分开表示。 */
@@ -1200,10 +1380,16 @@ window.__ModuleLoader__.load({
 				applySize(next);
 				setSize(next);
 			};
-			return h('div', { className: 'dspro_section' }, [
-				h('h2', { key: 'heading', className: 'dspro_heading' }, t('heading')),
-				h('p', { key: 'intro', className: 'dspro_intro' }, t('intro')),
-				h('div', { key: 'rows', className: 'dspro_rows' }, [
+			// 当前分区走 store（不是 useState）：假 React 的 useState setter 是空操作，
+			// 探针就切不了 tab；useSyncExternalStore 会真的调 get，于是三个分区都能渲染出来逐个断言。
+			const tab = React.useSyncExternalStore(
+				(listener) => settingsTabStore.subscribe(listener),
+				() => settingsTabStore.get()
+			);
+			// 每个块归哪个分区只有一处真相：`tabOfBlock`。渲染按它过滤，
+			// 以后加块时必须显式归类（探针钉住了每个块落在哪个分区）。
+			const blocks = [
+				{ name: 'size', node: h('div', { key: 'rows', className: 'dspro_rows' }, [
 					panelRow('width', t('widthTitle'), t('widthDesc'), h(Stepper, {
 						t,
 						axis: 'width',
@@ -1229,11 +1415,32 @@ window.__ModuleLoader__.load({
 							commit({ width: DEFAULTS.width, height: DEFAULTS.height });
 						}
 					}, t('reset')))
-				]),
-				h(HostOps, { key: 'ops', t }),
-				h(MachineNameBlock, { key: 'machine', t }),
-				h(ModelPillBlock, { key: 'modelPill', t }),
-				h(VersionBlock, { key: 'version', t })
+				]) },
+				{ name: 'machineName', node: h(MachineNameBlock, { key: 'machine', t }) },
+				{ name: 'modelPill', node: h(ModelPillBlock, { key: 'modelPill', t }) },
+				{ name: 'ops', node: h(HostOps, { key: 'ops', t }) },
+				{ name: 'version', node: h(VersionBlock, { key: 'version', t }) },
+				{ name: 'agentTools', node: h(AgentToolsBlock, { key: 'agentTools', t }) }
+			];
+			return h('div', { className: 'dspro_section' }, [
+				h('h2', { key: 'heading', className: 'dspro_heading' }, t('heading')),
+				h('p', { key: 'intro', className: 'dspro_intro' }, t('intro')),
+				h('div', {
+					key: 'tabs',
+					className: 'dspro_tabs',
+					role: 'tablist',
+					'aria-label': t('tabsAria')
+				}, TABS.map((key) => h('button', {
+					key,
+					type: 'button',
+					role: 'tab',
+					className: 'dspro_tab',
+					'aria-selected': tab === key ? 'true' : 'false',
+					onClick: () => {
+						settingsTabStore.set(key);
+					}
+				}, t(key === 'ui' ? 'tabUi' : key === 'host' ? 'tabHost' : 'tabAgent')))),
+				...blocks.filter((block) => tabOfBlock(block.name) === tab).map((block) => block.node),
 			]);
 		}
 
@@ -2022,6 +2229,9 @@ window.__ModuleLoader__.load({
 			probe: {
 				agentToolsSummary,
 				agentToolsClass,
+				settingsTabStore,
+				tabOfBlock,
+				TABS,
 				describeModelState,
 				selectionOfProjection,
 				modelPillStore,
