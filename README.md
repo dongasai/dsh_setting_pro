@@ -2,8 +2,9 @@
 
 把 DSH Web 的**设置弹窗**从官方写死的 `800 × 800` 放大（开箱 `1180 × 920`），并把三件 Host 运维的事
 收进 **「设置 → 高级设置」** 这一页：**重启 dsh**、**空闲后重启**、**最后启动时间**，
-外加 **dsh 版本 / 更新提示** 与 **机器名字**（直接顶替左上角品牌区），
-以及左上角**常驻状态指示**和输入框下方那一行的**「供应商 · 模型 · 思考档位」**。
+外加 **dsh 版本 / 更新提示**（可选 latest / next / alpha 通道，有新版本时 logo 处出现向上箭头）
+与 **机器名字**（直接顶替左上角品牌区），以及左下角**常驻状态指示**
+和输入框下方那一行的**「供应商 · 模型 · 思考档位」**。
 
 **为什么需要它**：官方设置面板的几何没有任何入口（没有槽位、没有 CSS 变量、没有 `Config`）；
 而改完 Host 半边的插件必须重启进程才生效，官方也没给界面入口，用户只能去终端敲 `systemctl`。
@@ -33,14 +34,14 @@
 | 功能 | 在哪 | 说明 |
 | --- | --- | --- |
 | 设置弹窗尺寸 | 设置 → 高级设置 → 面板宽度 / 面板高度 / 恢复默认尺寸 | 20px 一档，改完**立即生效**；默认 `1180 × 920`，范围宽 640–2400、高 480–1600 |
-| 重启 dsh | 同页 → Host 运维 → 重启 DSH | 延迟 3 秒发出（让这次应答先回页面）；忙时二次确认；页面断连后自动重连 |
-| 空闲后重启 | 同页 → 空闲后重启 / 取消排程 | 所有会话空闲 10 秒后自动重启；重复点击是幂等的（不重置计时） |
+| 重启 dsh | 同页 → **Host** → 重启 DSH | 延迟 3 秒发出（让这次应答先回页面）；忙时二次确认；页面断连后自动重连 |
+| 空闲后重启 | 同页 → **Host** → 空闲后重启 / 取消排程 | 所有会话空闲 10 秒后自动重启；重复点击是幂等的（不重置计时） |
 | 最后启动时间 | 同页状态行 | `最后启动 <时刻>（已运行 …）`，与 `bootId` 一起用来确认「重启完成了」 |
-| dsh 版本 / 更新提示 | 同页 → DSH 版本 | 打开页面查一次 npm dist-tags（缓存 6h），有更高版本给一行提醒 |
-| 机器名字 | 同页 → 机器名字 | 存 Host；保存后**直接顶替左上角品牌区**（官方 logo 让位），清空则官方 logo 回来 |
-| 状态指示 | 左上角品牌区（logo 后面） | **常驻**：有会话在跑显示 `● 运行中 ×N`（**悬停列出每个「工作区 · 会话标题」**），全部空闲显示灰色 `● 空闲`；口径与「空闲后重启」一致（Host 侧跨会话） |
-| 模型信息（那一行） | 输入框下方「性能与用量」行的**右侧并列一格** | 只读显示 `供应商 · 模型 · 思考档位`（悬停给出内部 id 与数据来源）；**官方那两条 pill 原样保留**，可在「高级设置」里关掉 |
-| 模型侧工具 | 同页 → Host 运维 → **开放给 agent** | `dsh_restart_when_idle` / `dsh_restart_status` / `dsh_restart_cancel`（**没有**立即重启工具）。这个勾选框控制模型能不能看到它们：关掉即时注销、打开即时注册，**不用重启 dsh**；开关存在 Host 的状态文件里 |
+| dsh 版本 / 更新提示 | 同页 → **Host** → DSH 版本 | 打开页面起 5 分钟轮询 npm dist-tags（Host 侧缓存 6h）；**可**选 `auto` / `latest` / `next` / `alpha` 等通道，按所选通道判断有没有新版，有就提示并**在 logo 处显示向上箭头** |
+| 机器名字 | 同页 → **UI** → 机器名字 | 存 Host；保存后**直接顶替左上角品牌区**（官方 logo 让位），清空则官方 logo 回来 |
+| 状态指示 | **左下角**（`sidebar.footer.action` 槽位，侧边栏底部） | **常驻**：有会话在跑显示 `● 运行中 ×N`（**悬停列出每个「工作区 · 会话标题」**），全部空闲显示灰色 `● 空闲`；口径与「空闲后重启」一致（Host 侧跨会话） |
+| 模型信息（那一行） | 输入框下方「性能与用量」行的**右侧并列一格**（开关在 **UI** 分区） | 只读显示 `供应商 · 模型 · 思考档位`（悬停给出内部 id 与数据来源）；**官方那两条 pill 原样保留**，可在「高级设置」里关掉 |
+| 模型侧工具 | 同页 → **Agent** → **开放给 agent** | `dsh_restart_when_idle` / `dsh_restart_status` / `dsh_restart_cancel`（**没有**立即重启工具）。这个勾选框控制模型能不能看到它们：关掉即时注销、打开即时注册，**不用重启 dsh**；开关存在 Host 的状态文件里 |
 
 ## 快速开始
 
@@ -79,9 +80,14 @@ dsh plugin --profile web add 'github:dongasai/dsh_setting_pro#0.10'   # 当前 t
 
 ### 2. 用起来
 
-打开「设置」→ 左侧导航选**「高级设置」**（最后一项，齿轮图标）→ 五块从上到下：
-**尺寸三行** → **Host 运维**（重启 / 空闲后重启 / 取消排程 + 状态行）→ **机器名字** →
-**输入框下方那一行**（是否显示「供应商 · 模型 · 思考档位」）→ **DSH 版本**。
+打开「设置」→ 左侧导航选**「高级设置」**（最后一项，齿轮图标）→ 顶部有**三个分区**
+（`UI` / `Host` / `Agent`，选中的那个记在本浏览器里）：
+
+| 分区 | 放什么 | 为什么在这一栏 |
+| --- | --- | --- |
+| **UI** | 尺寸三行、机器名字、「输入框下方那一行」开关 | 改的都是**你看到的样子**（机器名的值虽然存 Host，但它改的是左上角显示） |
+| **Host** | 重启 / 空闲后重启 / 取消排程、DSH 版本与更新通道 | 都是**你对着这台机器**做的运维动作 |
+| **Agent** | 开放给 agent | 管的是**模型能看到什么**，读者和上面那些按钮不同 |
 
 ### 3. 确认它真的在工作
 
@@ -100,35 +106,46 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:3080/s
 
 ```
 设置 → 高级设置
-├─ 面板宽度            [ 1180 ▲▼ ] px        尺寸三行：改完立即生效，只记本浏览器
-├─ 面板高度            [  920 ▲▼ ] px
-├─ 恢复默认尺寸        [ 恢复默认 ]
-├─ Host 运维
+├─ [ UI ] [ Host ] [ Agent ]                ← 三个分区，选中的记在本浏览器
+│
+├─ UI
+│   ├─ 面板宽度        [ 1180 ▲▼ ] px        改完立即生效，只记本浏览器
+│   ├─ 面板高度        [  920 ▲▼ ] px
+│   ├─ 恢复默认尺寸    [ 恢复默认 ]
+│   ├─ 机器名字        [ 工作机      ] [保存] [清除]
+│   │   └─ 说明行：左上角品牌区已换成这个名字 / 槽位占位失败，已退回 logo 下面的小字 / 还没设名字
+│   └─ 输入框下方那一行
+│       ├─ 显示模型信息 [✓]                  关掉后那一行只剩官方内容（只记本浏览器）
+│       └─ 状态行：已挂到那一行（官方两条 pill 保留）/ 还没挂上… / 挂不上那一行：<原因>
+│
+├─ Host
 │   ├─ 重启 DSH        [ 重启 ]              忙时先弹确认，再带 force 重发
 │   ├─ 空闲后重启      [ 排程 ] / [ 已排程]   幂等：重复点不重置 10 秒计时
 │   ├─ 取消排程        [ 取消 ]              只在已排程时可用
-│   ├─ 开放给 agent    [✓]                   模型能不能看到这三个工具（即时生效）
 │   ├─ 状态行：当前空闲 · 最后启动 2026-10-17 00:12:34（已运行 3 小时 4 分）· 目标单元 dsh.service
-│   └─ 工具行：当前：已开放给 agent（3）／未开放（工具已注销）／⚠ 开关与实际不一致（没生效）：<原因>
-├─ 机器名字            [ 工作机        ] [保存] [清除]
-│   └─ 说明行：左上角品牌区已换成这个名字 / 槽位占位失败，已退回 logo 下面的小字 / 还没设名字
-├─ 输入框下方那一行
-│   ├─ 显示模型信息    [✓]                   关掉后那一行只剩官方内容（只记本浏览器）
-│   └─ 状态行：已挂到那一行（官方两条 pill 保留）/ 还没挂上… / 挂不上那一行：<原因>
-└─ DSH 版本
-    ├─ 当前版本        0.2.0-rc.2
-    └─ 最新版本        0.2.1-alpha.5 (alpha)   [检查更新]
-        ⚠ 有新版本 · 0.2.1-alpha.5 (alpha) · 当前 0.2.0-rc.2 — 重启 dsh 时由 npx 重新解析…
+│   └─ DSH 版本
+│       ├─ 当前版本    0.2.0-rc.2
+│       ├─ 更新通道    [ auto（所有通道取最高）▾ ]   ← latest / next / alpha …（按 registry 实际有的列）
+│       └─ 最新版本    0.2.1-alpha.5 (alpha)  [检查更新]
+│           ⚠ 有新版本 · 0.2.1-alpha.5 (alpha) · 当前 0.2.0-rc.2 — 重启 dsh 时由 npx 重新解析…
+│
+└─ Agent
+    ├─ 开放给 agent    [✓]                   模型能不能看到这三个工具（即时生效）
+    └─ 工具行：当前：已开放给 agent（3）／未开放（工具已注销）／⚠ 开关与实际不一致（没生效）：<原因>
 ```
 
-左上角侧边栏：
+侧边栏两处（2026-10-19 起「运行中」不再挤在 logo 那一行了）：
 
 ```
-[ logo / 机器名 ]  ● 运行中 ×2    [收起]   ← 悬停：每个在跑会话一行「工作区 · 会话标题」
-[ logo / 机器名 ]  ● 空闲         [收起]   ← 全部空闲时灰色常显（第一次读到状态之前不显示）
+左上角（logo 行）                         左下角（footer 区）
+[ logo / 机器名 ]  ↑              [⚙ 设置]
+                   └ 有新版本时的向上箭头   [● 运行中 ×2 !]  ← 状态指示挪到这里
+                                             └ 悬停：每个在跑会话一行「工作区 · 会话标题」
+                                             空闲时灰色「● 空闲」（第一次读到状态之前不显示）
+                                             已排程空闲重启时文字后多一个橙色「!」
 ```
 
-设了机器名字后，**品牌区（logo 那一行）被机器名取代**（16px 加粗）；没设名字、或点了「清除」，官方 logo 照旧。
+设了机器名字后，**品牌区（logo 那一行）被机器名取代**（20px 加粗）；没设名字、或点了「清除」，官方 logo 照旧。
 「运行中」小药丸插在品牌区**后面**（同一个位置是 orca 皮肤的信号 chip），侧边栏折叠成 rail 时两样都不显示
 （官方本来也不渲染品牌名）。
 
@@ -170,7 +187,7 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:3080/s
 | [client.js](client.js) | 浏览器半边：面板几何覆盖、`settings.section` 设置页（含「开放给 agent」开关）、品牌区顶替、DOM 兜底、状态轮询、那一行的模型格 |
 | [cordis.patch.yml](cordis.patch.yml) | bundle patch：只 `insert` 一行 `id: setting-pro` |
 | [package.json](package.json) | manifest：`dsh.bundle.patch` 指向 patch；`dsh.client` 声明 `platform/immediately/inject` |
-| [probe.mjs](probe.mjs) | 静态回归探针：`node probe.mjs`，**344 项**，不出网、不写真实状态文件 |
+| [probe.mjs](probe.mjs) | 静态回归探针：`node probe.mjs`，**427 项**，不出网、不写真实状态文件 |
 | [README.md](README.md) / [IMPLEMENTATION.md](IMPLEMENTATION.md) / [AGENTS.md](AGENTS.md) | 怎么用 / 为什么 / 给 agent 的约束 |
 
 **Host 半边注入的服务**（`index.js`）：`webServer`（挂路由）、`connection`（信任围栏）、
@@ -187,7 +204,7 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:3080/s
 | --- | --- | --- | --- |
 | `settings.section`（list 槽） | 本插件 | `id: advanced`、`order: 50` | 左侧导航新增一页；`label` 是 thunk（语言切换即时跟上）；**不声明 `children`**，页面自绘 |
 | `sidebar.brand.mark`（single 槽） | 本插件（**条件占用**） | `priority: -1` | 仅在**有机器名字**时占位；渲染 `null`（让位给名字）。官方 `dsh-client-ui-brand-official` 用 `priority: 0` |
-| `sidebar.brand.name`（single 槽） | 本插件（**条件占用**） | `priority: -1` | 渲染机器名（`.dspro_brandName`，16px/600）；清空名字即撤销占位 |
+| `sidebar.brand.name`（single 槽） | 本插件（**条件占用**） | `priority: -1` | 渲染机器名（`.dspro_brandName`，20px/600，行高锁 24px 贴合官方行盒）；清空名字即撤销占位 |
 | `conversation.composer.dock`（list 槽） | 本插件 | `id: model-usage`、`order: 1` | 与官方那条（`id: stats`、`order: 0`）**并列**，不顶替；只读、无 `priority` |
 | `settings.general.item` | **本插件不占** | — | 0.1.0 曾往「通用」里塞一行，0.2.0 起改独立页；探针里有断言确保这里不再有 `setting-pro` |
 | 面板几何 CSS | 本插件 | 选择器 `[data-shortcut-modal="settings"][role="dialog"]` | 见 [IMPLEMENTATION.md](IMPLEMENTATION.md) 第一节 |
@@ -205,7 +222,7 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:3080/s
 | `/setting-pro/restart` | POST | `{force?: true}` | `200 {ok:true, transientUnit, unit, fireAt, delaySec}` ／ `409 {code:'busy', runningCount, running[]}` ／ `501 {code:'unsupported-host', message}` ／ `500 {code:'spawn-failed', message}` |
 | `/setting-pro/schedule` | POST | `{}` | `200 {ok:true, armed:true, busy, running[], quietWindowMs}`；已排程时 `{already:true}`（幂等） |
 | `/setting-pro/cancel` | POST | `{}` | `200 {ok:true, armed:false}` |
-| `/setting-pro/version` | GET（`?refresh=1` 强制重查） | — | `{package, registry, ttlMs, current, currentSource, currentPath, tags[{tag,version}], newest, newestTag, newer, upToDate, line, comparable, checkedAt, attemptAt, error}` |
+| `/setting-pro/version` | GET（`?refresh=1` 强制重查；`?channel=alpha` 按所选通道给结论，缺省 `auto`） | — | `{package, registry, ttlMs, current, currentSource, currentPath, tags[{tag,version}], channels[], channel, channelRequested, channelMissing, newest, newestTag, newer, upToDate, line, comparable, checkedAt, attemptAt, error}` |
 | `/setting-pro/agent-tools` | GET / POST | GET 无体；POST `{enabled}`（**只认布尔**） | GET `{enabled, exposed, names[], path, error}`；POST `200 {ok:true, enabled, exposed, names[]}` ／ `400 {code:'bad-request'}` ／ `500 {code:'write-failed'}`。`enabled` 是开关值、`exposed` 是**实际注册状态**（改完即时生效，不用重启） |
 | `/setting-pro/machine` | GET / POST | GET 无体；POST `{name}`（空串＝清除） | GET `{name, path, error, maxLength}`；POST `200 {ok:true, name, path, maxLength}` ／ `400 {code:'bad-request'}` ／ `500 {code:'write-failed'}` |
 
@@ -282,9 +299,11 @@ curl -s -X POST -H 'content-type: application/json' \
 ### 命令行能覆盖的部分
 
 ```bash
-# 0) 静态回归探针：344 项（宿主判据 / 命令构造 / 空闲状态机 / 路由契约 / 版本比较与更新检查 /
+# 0) 静态回归探针：427 项（宿主判据 / 命令构造 / 空闲状态机 / 路由契约 / 版本比较与更新检查 /
 #    机器名与开关的清洗存取（假 fs，不碰 ~/.dsh）/ 组件渲染 / 品牌区顶替与 DOM 兜底 /
-#    状态指示（忙·空闲·悬停明细）/ 模型格（三段拼法、id 退路、开关落盘、挂不上时不冒异常）/
+#    设置页三分区（归类 · 隔离 · 选中态跟随 store）/ 左下角状态指示（槽位 id·order、两态、
+#    排程感叹号、describeChip 判据含「未知不画」）/ 版本通道（通道矩阵、切换不重打 registry、
+#    空基准不判更新）/ 模型格（三段拼法、id 退路、开关落盘、挂不上时不冒异常）/
 #    工具网关（即时注册注销、状态两个字段分开报、apply 不被注册失败带崩）/ 产物形状）
 node probe.mjs
 node --check index.js && node --check client.js && node --check probe.mjs
@@ -310,28 +329,40 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:3080/s
 - [ ] 该页有「面板宽度 / 面板高度 / 恢复默认尺寸」三行，步进器可点、面板随点随变；
 - [ ] 「通用」里**没有**插件加的那一行；刷新页面后尺寸仍是上次设定的值。
 
-Host 运维五条（会真的重启，需你本人点）：
+Host 分区三条（会真的重启，需你本人点）：
 
 - [ ] 状态行给出**最后启动时间与已运行时长**、当前空闲或有 N 个会话在运行、目标单元名；
 - [ ] 「重启 DSH」「空闲后重启」两个按钮**都可点**（Host 半边未加载时点一下会直接说明原因）；
 - [ ] 点「空闲后重启」→ 状态行变「已排程：已静默 N 秒 / 10 秒」（忙时显示还剩几个会话在跑），
       「取消排程」可用；再点一次不重置计时；点取消即撤销；
 - [ ] 点「重启 DSH」（忙时会先弹二次确认）→ 页面断连，几秒后自动重连，`bootId` 与**最后启动时间**都变了；
+
+Agent 分区一条：
+
 - [ ] 「开放给 agent」取消勾选 → 下面那行立刻变成「未开放（工具已注销）」，且**新起的回合里模型看不到** `dsh_restart_*`
       （当前这一轮已经带上的工具列表不会追溯改变）；勾回来 → 那行变回「已开放」，不用重启 dsh。
 
-状态指示四条：
+分区本身三条：
 
-- [ ] 让某个会话跑起来（发条消息，或让子代理/团队成员在干活）→ logo 后面出现 `● 运行中`
-      （多个会话显示 `×N`），小圆点轻微呼吸；
+- [ ] 顶部有 `UI` / `Host` / `Agent` 三个 tab，点一下只显示那一栏的内容；
+- [ ] 刷新页面后**停在上次选的那一栏**（`localStorage`；清掉站点数据则回到 `UI`）；
+- [ ] `UI` 栏里没有「重启 DSH」，「Host」栏里没有「开放给 agent」（两者不混）。
+
+状态指示五条：
+
+- [ ] 让某个会话跑起来（发条消息，或让子代理/团队成员在干活）→ **左下角**（侧边栏底部、设置齿轮上方）
+      出现 `● 运行中`（多个会话显示 `×N`），小圆点轻微呼吸；**logo 那一行不再有它**；
 - [ ] **悬停它** → 每个在跑的会话一行「工作区 · 会话标题」（工作区名 = `basename(cwd)`，与会话列表口径一致；
       没生成过标题的只显示工作区）；
 - [ ] 全部空闲后变成灰色 `● 空闲` **常显**（不再消失）；悬停提示「当前没有会话在运行」；
-- [ ] 侧边栏折叠成 rail 时它不显示；升级后没重启 dsh 时悬停只有计数、没有明细（旧 Host 不发 `runningSessions`）。
+- [ ] 点「空闲后重启」后，它的文字后多一个**橙色 `!`**（空闲态也标 —— 那正是「马上要重启」），悬停多一行
+      「已排程：等所有会话空闲后重启 DSH」；点取消 → 感叹号当场消失；
+- [ ] 侧边栏折叠成 rail 时它跟着官方布局走（官方 footArea 怎么排就怎么排）；
+      升级后没重启 dsh 时悬停只有计数、没有明细（旧 Host 不发 `runningSessions`）。
 
 机器名字三条：
 
-- [ ] 输入一个名字保存 → **左上角的 logo 被这个名字取代**（16px 加粗），设置页说明行写「左上角品牌区已换成这个名字」；
+- [ ] 输入一个名字保存 → **左上角的 logo 被这个名字取代**（20px 加粗），设置页说明行写「左上角品牌区已换成这个名字」；
 - [ ] 刷新页面后仍在（值来自 Host 的 `$DSH_HOME/setting-pro.json`，不是浏览器缓存）；
 - [ ] 点「清除」→ 官方 logo 回来；侧边栏折叠成 rail 时这一行不显示，展开后自动回来。
 
@@ -342,13 +373,19 @@ Host 运维五条（会真的重启，需你本人点）：
 - [ ] 改模型（用官方那个下拉）后，这一格跟着变（不用刷新页面）；
 - [ ] 到「高级设置」取消勾选「显示模型信息」→ 那一格**当场消失**，只剩官方内容；刷新页面后仍是关的。
 
-DSH 版本三条：
+DSH 版本四条：
 
 - [ ] 打开设置页即显示当前版本，与 `npm ls -g @deepseek-ai/dsh`（全局装法）一致，且来源写着 `package`
       —— 不是 `nearest`。（`nearest` 意味着没认出 dsh 包，见排错表）；
 - [ ] 若某个 dist-tag 高于当前版本，出现 warn 色「有新版本 · …」；点「检查更新」强制重查；
 - [ ] 反向确认它不再瞎报「已是最新」：拿当前版本和 registry 的 `next`/`alpha` 心算一下，
-      有更新就必须出现那一行提示。
+      有更新就必须出现那一行提示；
+- [ ] 「更新通道」下拉里有 `auto` 与 registry 里实际存在的每个 tag（本机是 `latest` / `next` / `alpha`）；
+      选 `latest` 与选 `alpha` 得到的结论**可以不同**（本机 `latest` = 当前版本 → 已是最新；
+      `alpha` 更新 → 有新版本）；选一个 registry 里没有的通道会明说「这个通道没有发布过」，
+      **不会**骗你说「已是最新」；
+- [ ] 有更新时，**左上角 logo 旁出现一个向上箭头**（悬停写「dsh 有更新：<版本> (<通道>) · 通道 <所选通道>」）；
+      切到没有更新的通道后箭头消失。
 
 ⚠️ 这一条要**重启 dsh 之后**才成立（2026-10-18 修的是 Host 半边的 `index.js`）。
 
@@ -381,9 +418,13 @@ DSH 版本三条：
   关掉之后**所有**会话里的模型都看不到这三个工具（页面上人点的按钮不受影响）。改它**即时生效**、不用重启；
   但对**已经开场**的回合不追溯 —— 工具列表是在那次请求里发给模型的，正在跑的那轮仍可能带着它调用（会被 Host 侧
   正常执行，因为路由一直在）。想要「绝对没有模型能用」，关掉后再把在跑的会话停掉。
-- **尺寸、「已排程」状态与「显示模型信息」开关只存在本机浏览器**（`localStorage`），不跨设备同步；Host 半边不存这些偏好。
-- **更新提示只看 dist-tags，不替你升级**：不下载、不切通道、不改 profile。要知道「重启后是不是变成新版」，
-  重启完再看一次当前版本。
+- **浏览器侧偏好只存在本机浏览器**（`localStorage`，共五个键，不跨设备同步、Host 半边不存）：
+  `dsh.setting-pro.size`（面板尺寸）、`dsh.setting-pro.pending-restart`（重连判定用的 `bootId`）、
+  `dsh.setting-pro.modelPill`（那一格显不显示）、`dsh.setting-pro.tab`（设置页停在哪个分区）、
+  `dsh.setting-pro.channel`（更新通道）。改键 = 用户已有偏好失效。
+- **更新提示只看 dist-tags，不替你升级**：不下载、不改 profile、不替你把 dsh 换成别的通道 ——
+  「更新通道」下拉只决定**拿哪条线做比较**（进而决定 logo 上有没有箭头），不改你的安装。
+  要知道「重启后是不是变成新版」，重启完再看一次当前版本。
 - **工具名 `dsh_restart_*` 由本插件占用**；装其它提供同名工具的重启类插件会撞名。
 - 本仓库已入 git 并推到 `git@github.com:dongasai/dsh_setting_pro.git`（`main` + 附注标签 `0.10`）。
   tag 用**裸版本号**：`0.10` ↔ `package.json` 的 `0.10.0`。
@@ -394,10 +435,11 @@ DSH 版本三条：
 
 | 文件 | 作用 |
 | --- | --- |
-| [index.js](index.js) | Host 半边（1470 行） |
-| [client.js](client.js) | 浏览器半边（1991 行） |
-| [probe.mjs](probe.mjs) | 静态回归探针（344 项） |
+| [index.js](index.js) | Host 半边（1514 行） |
+| [client.js](client.js) | 浏览器半边（2515 行） |
+| [probe.mjs](probe.mjs) | 静态回归探针（427 项） |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | 为什么这么实现 |
-| [AGENTS.md](AGENTS.md) | 给 agent 的约束（27 条硬性约束、改动连带项） |
+| [AGENTS.md](AGENTS.md) | 给 agent 的约束（28 条硬性约束、改动连带项） |
+| [CHANGELOG.md](CHANGELOG.md) | 完整变更史（逐条原始记录，含当时写错的数字与被推翻的结论） |
 | [.agents/index.json](.agents/index.json) | 仓库扫描索引（模块、覆盖率、缺口、下一步） |
 | [cordis.patch.yml](cordis.patch.yml) / [package.json](package.json) | bundle patch 与 manifest |

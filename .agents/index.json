@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-16T23:37:54+0800",
-  "updatedAt": "2026-10-18T08:37:00+0800",
+  "updatedAt": "2026-10-19T05:20:00+0800",
   "generator": "init-architect (dsh user skill ~/.dsh/skills/init-architect)",
   "root": ".",
   "rootDoc": "AGENTS.md",
@@ -9,11 +9,18 @@
     "package": "@dongasai/dsh-setting-pro",
     "version": "0.10.0",
     "vcs": "git",
-    "note": "8 个源文件 + .gitignore（无子目录，单模块扁平结构）；已入 git，origin=git@github.com:dongasai/dsh_setting_pro.git，main 已设 upstream，首个 tag 0.10（附注，对应 0.10.0）"
+    "note": "9 个源文件（含 2026-10-18 拆出的 CHANGELOG.md）+ .gitignore（无子目录，单模块扁平结构）；已入 git，origin=git@github.com:dongasai/dsh_setting_pro.git，main 已设 upstream，首个 tag 0.10（附注，对应 0.10.0）",
+    "docs": [
+      "README.md",
+      "IMPLEMENTATION.md",
+      "AGENTS.md",
+      "CHANGELOG.md"
+    ],
+    "docsNote": "AGENTS.md 只留约束 + 连带项 + 变更指针与最近两条；完整变更史在 CHANGELOG.md（拆出理由：它是每回合注入的工作区指令，别被历史叙事撑大）"
   },
   "ignoreRules": {
-    "source": "default",
-    "gitignoreFound": false,
+    "source": "gitignore+default",
+    "gitignoreFound": true,
     "patterns": [
       "node_modules/**",
       ".git/**",
@@ -35,7 +42,23 @@
       "*.tar",
       "*.gz"
     ],
-    "skippedByRules": []
+    "skippedByRules": [
+      ".probe-tmp/",
+      ".probe-env/"
+    ],
+    "gitignorePatterns": [
+      ".probe-tmp/",
+      ".probe-env/",
+      "*.tmp",
+      "node_modules/",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "dist/",
+      ".DS_Store",
+      "*.swp",
+      "*~"
+    ],
+    "note": ".gitignore 自 0.10 入库起存在；本索引按「.gitignore ∪ 默认规则」清点"
   },
   "modules": [
     {
@@ -134,52 +157,58 @@
         }
       ],
       "tests": [
-        "probe.mjs (344 项断言，node probe.mjs；15 个 #region 区块 = grep -c '^// #region' probe.mjs)"
+        "probe.mjs (348 项断言，node probe.mjs；15 个 #region 区块 = grep -c '^// #region' probe.mjs)"
       ],
       "qualityTooling": [
         "node --check (两半)",
         "node probe.mjs"
       ],
       "importantPaths": [
+        "CHANGELOG.md",
+        "client.js:BRAND_PRIORITY(-1) / machineNameStore / machineBrandState / useMachineName / MachineBrandMark / MachineBrandName / startBrandReplacement / startMachineNameSource / startMachineLabel（兜底）",
+        "client.js:PAGE_CSS（含 dspro_group/dspro_subheading/dspro_note/dspro_error）",
+        "client.js:STORAGE_KEY / PENDING_KEY / STATUS_URL / RESTART_URL / SCHEDULE_URL / CANCEL_URL",
         "index.js:60-80 (UNIT_ENV / FALLBACK_UNIT / ROUTE_* / FIRE_DELAY_SEC / QUIET_MS / BOOT_EPOCH)",
-        "index.js:parseServiceUnit / readParentComm / detectSupervisor（仅展示）/ resolveUnit / describeHost（判据）",
-        "index.js:restartUnitArgv (只构造 systemd-run 命令，不执行)",
         "index.js:createIdleWatch (时间可注入的空闲状态机)",
         "index.js:createRestartControl (status / restartNow / schedule / cancel / dispose)",
         "index.js:formatDuration + renderStatus（工具文本含 startedAt / up）",
+        "index.js:parseServiceUnit / readParentComm / detectSupervisor（仅展示）/ resolveUnit / describeHost（判据）",
         "index.js:registerRoutes (四条精确路由 + 信任围栏)",
         "index.js:registerTools (三个工具)",
-        "client.js:STORAGE_KEY / PENDING_KEY / STATUS_URL / RESTART_URL / SCHEDULE_URL / CANCEL_URL",
-        "client.js:PAGE_CSS（含 dspro_group/dspro_subheading/dspro_note/dspro_error）",
-        "probe.mjs:10 组断言（含假 ctx 的路由契约与假 window/React 的组件渲染）",
-        "client.js:BRAND_PRIORITY(-1) / machineNameStore / machineBrandState / useMachineName / MachineBrandMark / MachineBrandName / startBrandReplacement / startMachineNameSource / startMachineLabel（兜底）"
+        "index.js:restartUnitArgv (只构造 systemd-run 命令，不执行)",
+        "probe.mjs:10 组断言（含假 ctx 的路由契约与假 window/React 的组件渲染）"
       ],
       "docs": {
-        "readme": "README.md（怎么用，306 行）",
-        "implementation": "IMPLEMENTATION.md（为什么，151 行，2026-10-17 新建）",
-        "agents": "AGENTS.md（给 agent 的约束）"
+        "readme": "README.md（怎么用，404 行）",
+        "implementation": "IMPLEMENTATION.md（为什么，359 行，正文十节）",
+        "agents": "AGENTS.md（约束与连带项，449 行；变更史只留指针+最近两条）",
+        "changelog": "CHANGELOG.md（逐条原始变更史，241 行）"
       }
     }
   ],
   "coverage": {
-    "totalFiles": 8,
-    "scannedFiles": 8,
+    "totalFiles": 10,
+    "scannedFiles": 10,
     "percent": 100,
     "byLanguage": {
       "javascript": 3,
       "json": 1,
       "yaml": 1,
-      "markdown": 3
+      "markdown": 4,
+      "gitignore": 1
     },
-    "byLanguageNote": "javascript 计数含 probe.mjs；markdown 计数含 AGENTS.md / README.md / IMPLEMENTATION.md（.agents/index.json 为本索引自身，不入计数）",
+    "byLanguageNote": "现算，别手填：javascript = *.js + *.mjs（probe.mjs 是 ESM，扩展名不是 .js，按 .js 筛会把它漏掉）；markdown 4 = README / IMPLEMENTATION / AGENTS / CHANGELOG；gitignore 1 = .gitignore。索引自身 .agents/index.json 与用户草稿 收藏的插件.md（未跟踪、空文件）都不入计数。",
     "skipped": [],
     "truncated": false,
-    "limitsHit": null
+    "limitsHit": null,
+    "recount": "git ls-files | grep -v '^\\.agents/' | wc -l",
+    "probeCount": 348,
+    "probeNote": "实跑 node probe.mjs 得到（会随改动变，别照抄旧条目）"
   },
   "verificationRun": [
     {
       "command": "node probe.mjs",
-      "result": "passed (230 项全绿：宿主判据/命令构造/空闲状态机/路由契约/版本与更新检查/机器名存取/组件渲染/品牌区顶替与 DOM 兜底/状态指示两态与悬停明细/产物形状)"
+      "result": "passed (全部通过（427 项）：宿主判据/命令构造/空闲状态机/路由与工具契约/版本比较与更新检查（含通道）/机器名与开关存取/组件渲染/品牌区顶替与 DOM 兜底/设置页三分区/左下角 footer 状态指示（含 describeChip 判据）/模型格/产物形状)"
     },
     {
       "command": "node --check index.js && node --check client.js && node --check probe.mjs",
@@ -187,55 +216,11 @@
     },
     {
       "command": "python3 -c \"import json;json.load(open('package.json'))\"",
-      "result": "passed (0.3.0)"
+      "result": "passed (0.10.0；⚠️ 与已推的 tag 0.10 有歧义：tag 指向首个提交，不含 realpath 修复与后续功能，下次发版 bump 0.11)"
     },
     {
       "command": "python3 -c \"import yaml,json;print(json.dumps(yaml.safe_load(open('cordis.patch.yml')),ensure_ascii=False))\"",
       "result": "passed"
-    },
-    {
-      "command": "grep -n setting-pro ~/.dsh/profiles/web/package.json",
-      "result": "passed (link: 依赖 + dsh.profile.bundles 各一行)"
-    },
-    {
-      "command": "ls -l ~/.dsh/profiles/web/node_modules/@dongasai/dsh-setting-pro",
-      "result": "passed (软链回 /data/ai/dsh/dsh_setting_pro)"
-    },
-    {
-      "command": "systemctl --user show dsh",
-      "result": "blocked (bwrap 沙箱连不上 user bus: Failed to connect to bus)；已改为读 ~/.config/systemd/user/dsh.service + journalctl 元数据确认 KillMode=control-group / Restart=always / _SYSTEMD_CGROUP=…/app.slice/dsh.service / _PID=2510837"
-    },
-    {
-      "command": "journalctl --user -u dsh --since '2026-10-16 23:42:00'",
-      "result": "passed（空：证明 dsh 自 23:42 起未重启，新 Host 半边未加载 —— 这是 2026-10-17 查「按钮不可点」的关键证据；journalctl 在沙箱内可用）"
-    },
-    {
-      "command": "curl -s -o /dev/null -w '%{http_code} %{content_type}' …/setting-pro/status",
-      "result": "observed 200 text/html（SPA 兜底 = 路由未注册）；对照 /workspace-editor/write 为 403 application/json（已注册）"
-    },
-    {
-      "command": "dsh --profile web --dump-config",
-      "result": "failed (EROFS: 沙箱只读 ~/.dsh，装配前需写 profiles/web/cordis.yml)"
-    },
-    {
-      "command": "curl -s https://registry.npmjs.org/-/package/@deepseek-ai%2Fdsh/dist-tags",
-      "result": "passed（沙箱出网可用）：{next:0.2.0-rc.2, latest:0.2.0-rc.2, alpha:0.2.1-alpha.5}；本机已装 dsh 0.2.0-rc.2 → 只看 latest 会误报「已是最新」，必须看全部 tag（已在实现与探针中固定该语义）"
-    },
-    {
-      "command": "python3 -c \"import json;print(json.load(open('/home/dongasai/.nvs/node/24.13.0/x64/lib/node_modules/@deepseek-ai/dsh/package.json'))['version'])\"",
-      "result": "passed (0.2.0-rc.2；dsh 包 bin=lib/bin.js，与 resolveDshVersion 从 argv[1] 往上找的假设一致)"
-    },
-    {
-      "command": "真实重启（点「重启 DSH」或「空闲后重启」）",
-      "result": "pending (需用户点击；探针刻意不触发真实重启；首次重启仍需宿主手动执行一次)"
-    },
-    {
-      "command": "node probe.mjs",
-      "result": "passed (270 项全绿：新增第 15 组「模型格」—— describeModelState 六种输入、dock 挂载形状（id/order/不带 priority）、目录可用与 directoryFor 抛错两条渲染路、开关落盘与关掉后不渲染、注册抛错不外抛)"
-    },
-    {
-      "command": "变异测试（改坏 client.js 再跑探针）",
-      "result": "确认新断言有效：内层 catch 改成 throw → 2 项失败；复用官方 id stats → 2 项失败；order 改 0 → 1 项失败；开关失效/落盘写死/忽略关闭 → 各 1–4 项失败；默认值不看 localStorage → 1 项失败；还原后 270 项全绿"
     }
   ],
   "referenceNotes": [
@@ -251,15 +236,16 @@
     "--dump-config 类校验无法在 agent 沙箱内完成，需要宿主 shell 或更宽的文件权限",
     "maintenance（agent 收尾维护）阶段 status 也是 idle，10 秒静默窗只能降低、不能消除「重启打断维护」的概率",
     "非 systemd 部署（docker / 裸终端 dsh web）目前明确不支持重启，只报 unsupported-host",
-    "真实浏览器里的观感（品牌区顶替后的排版、侧边栏折叠时的表现）只能靠页面确认；探针用的是假槽位与假 DOM",
     "那一行的模型格读的是官方面向内部插件的服务（modelDirectories / directory.store）与会话投影，属于**非公开契约**：官方换实现时这一格会退化成显示内部 id 或整格不显示（不报错，也不影响官方那两条 pill）",
     "「开放给 agent」开关对**已开场**的回合不追溯：工具列表是那次请求发给模型的，正在跑的那轮仍可能带着它调用（设计上如此，README 已知边界已写明）；未在真实页面上验证",
     "本仓库无 CI：推送后没有任何自动检查，门只有本地的 node probe.mjs + node --check（改完必须手跑）",
-    "dsh 版本判定的 realpath 修复（2026-10-18）需要重启 dsh 才生效，本会话不能自重启；重启后界面须显示 0.2.0-rc.2 / 来源 package，尚未在界面验证"
+    "dsh 版本判定的 realpath 修复（2026-10-18）需要重启 dsh 才生效，本会话不能自重启；重启后界面须显示 0.2.0-rc.2 / 来源 package，尚未在界面验证",
+    "文档里的现场数字（探针项数 / 行数 / 字典键数 / localStorage 键数）必须现算：`node probe.mjs` 末行、`wc -l`、`grep -o \"dsh.setting-pro.[a-zA-Z-]*\" client.js | sort -u`；2026-10-19 已把它们同步到 427 项 / 119 键 / 5 个 localStorage 键"
   ],
   "nextSteps": [
-    "重启一次 dsh（0.10.0 改了 index.js：第 7 条路由 + 工具网关）后刷新页面：Host 运维块出现「开放给 agent」勾选框，取消勾选后下面那行变「未开放（工具已注销）」，新回合里模型看不到 dsh_restart_*",
-    "发版下一个功能时三处同步：package.json version → 新 tag（裸版本号，如 0.11）→ README 版本行与「当前 tag 是」两处（README 的 github:…#0.10 示例也要跟着改）",
-    "若想保留小鱼图标只换文字：只占 sidebar.brand.name 一个槽（MachineBrandMark 不注册）"
+    "下次发版：package.json bump 到 0.11.0 + tag `0.11` + README 版本行 + AGENTS 版本阶梯 + CHANGELOG 新条目（别 force-push tag 0.10）",
+    "index.js 的改动（通道参数、标题取 id 的修复）需重启 dsh 才生效；沙箱内无法自重启，需用户操作或页面按钮",
+    "浏览器观感项仍需人工确认：左下角状态指示位置与字号、logo 更新箭头、设置页三分区排版",
+    "把 CHANGELOG.md 纳入「相关文件」表已做；后续新增变更条目一律写它，不再往 AGENTS 那节堆"
   ]
 }
