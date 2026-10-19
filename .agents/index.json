@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-10-16T23:37:54+0800",
-  "updatedAt": "2026-10-19T20:15:00+0800",
+  "updatedAt": "2026-10-19T20:26:00+0800",
   "generator": "init-architect (dsh user skill ~/.dsh/skills/init-architect)",
   "root": ".",
   "rootDoc": "AGENTS.md",
   "repo": {
     "path": "/data/ai/dsh/dsh_setting_pro",
     "package": "@dongasai/dsh-setting-pro",
-    "version": "0.10.0",
+    "version": "0.11.0",
     "vcs": "git",
     "note": "9 个源文件（含 2026-10-18 拆出的 CHANGELOG.md）+ .gitignore（无子目录，单模块扁平结构）；已入 git，origin=git@github.com:dongasai/dsh_setting_pro.git，main 已设 upstream，首个 tag 0.10（附注，对应 0.10.0）",
     "docs": [
@@ -215,7 +215,7 @@
     },
     {
       "command": "python3 -c \"import json;json.load(open('package.json'))\"",
-      "result": "passed (0.10.0；⚠️ 与已推的 tag 0.10 有歧义：tag 指向首个提交，不含 realpath 修复与后续功能，下次发版 bump 0.11)"
+      "result": "passed (0.11.0；tag 0.11 与 package.json 一致，0.10 那个「tag 不含最新修复」的歧义已收掉)"
     },
     {
       "command": "python3 -c \"import yaml,json;print(json.dumps(yaml.safe_load(open('cordis.patch.yml')),ensure_ascii=False))\"",
@@ -242,7 +242,7 @@
     "文档里的现场数字（探针项数 / 行数 / 字典键数 / localStorage 键数）必须现算：`node probe.mjs` 末行、`wc -l`、`grep -o \"dsh.setting-pro.[a-zA-Z-]*\" client.js | sort -u`；2026-10-19 已把它们同步到 386 项 / 115 键 / 5 个 localStorage 键"
   ],
   "nextSteps": [
-    "下次发版：package.json bump 到 0.11.0 + tag `0.11` + README 版本行 + AGENTS 版本阶梯 + CHANGELOG 新条目（别 force-push tag 0.10）",
+    "下次发版：package.json bump 到 0.12.0 + tag `0.12` + README 版本行 + AGENTS 版本阶梯 + CHANGELOG 新条目（别 force-push 已推的 0.10 / 0.11）",
     "index.js 的改动（通道参数、标题取 id 的修复）需重启 dsh 才生效；沙箱内无法自重启，需用户操作或页面按钮",
     "浏览器观感项仍需人工确认：logo 更新箭头、设置页三分区排版",
     "把 CHANGELOG.md 纳入「相关文件」表已做；后续新增变更条目一律写它，不再往 AGENTS 那节堆"

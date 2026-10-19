@@ -350,3 +350,18 @@
   IMPLEMENTATION §六 改写为「已移除：留作记录」，保留两条仍然成立的结论
   （Host 口径 vs 只读 DOM 的取舍、React 18 快照引用那个坑），章节号不重排以免其它文档的引用失效。
   ⚠️ 仍然要**刷新页面**才看得到变化（`client.js` 改动）。
+
+- `2026-10-19T20:26:00+0800` · **发布 `0.11.0`（tag `0.11`）**。
+  把 `0.10` 那个「tag 与 package.json 名字不唯一」的歧义收掉：`0.10` 只指向首个提交
+  （不含 realpath 修复、不含三栏设置页 / 通道 / 箭头、不含标题取 `agent.id` 的修复、
+  也不含这次删掉的「运行中」），`package.json` 却一直写着 `0.10.0` —— 装 `#0.10` 拿到的是旧代码。
+  现在 `package.json` = `0.11.0`、tag `0.11` 打在含全部改动的那个提交上，两者一致。
+  `0.11` 相对 `0.10` 的用户可见变化：
+  - **「运行中」状态指示整体移除**（本次）；左下角 footer 与 logo 行都不再有它；
+  - 设置页分 **UI / Host / Agent** 三栏，偏好落 `localStorage`；
+  - **版本通道选择**（auto / latest / next / alpha）+ logo 处**更新箭头**；
+  - 修复「运行中的会话标题全都一样、带着（`undefined`）」——`agent.sessionId` 并不存在，
+    真正的字段是 `agent.id`，取错导致标题缓存按同一个 `"undefined"` 键互相覆盖；
+  - 修复 dsh 版本读成 `1.7.1`（版本管理器自己的版本）——`resolveDshVersion` 先 `realpath` 再往上找；
+  - 修复「运行中」迁到槽位后**完全不显示**——React 18 `useSyncExternalStore` 要求快照引用稳定。
+  发版三处一起动（`package.json` + tag + 文档版本行），`0.10` 保持原样不动（不 force-push 已推引用）。

@@ -22,7 +22,7 @@
 | 项 | 值 |
 | --- | --- |
 | 包名 | `@dongasai/dsh-setting-pro` |
-| 版本 | **0.10.0**（与 `package.json` 一致）。⚠️ 当前 tag **`0.10`** 指向首个提交，**不含** 2026-10-18 那个「dsh 版本读错 → 更新检查废掉」的修复；修复只在 `main` 上，下次会发成 `0.11`。所以「装 `#0.10`」≠「拿到最新代码」 |
+| 版本 | **0.11.0**（与 `package.json` 一致，tag `0.11`）。⚠️ 老 tag **`0.10`** 只指向首个提交，**不含** 2026-10-18 那个「dsh 版本读错 → 更新检查废掉」的修复；要拿到最新代码请装 `#0.11` |
 | profile 行 id | `setting-pro` |
 | 源码 | `/data/ai/dsh/dsh_setting_pro` |
 | 界面入口 | 「设置 → 高级设置」（左侧导航最后一项；图标是官方给未知 id 的默认齿轮） |
@@ -63,10 +63,10 @@ grep -n setting-pro ~/.dsh/profiles/web/package.json
 ls -l ~/.dsh/profiles/web/node_modules/@dongasai/   # 应有一条软链指回源码目录
 ```
 
-**③ git 源**（已发布：`git@github.com:dongasai/dsh_setting_pro.git`，当前 tag `0.10`）：URL 后加 `#<tag|分支|commit>` 钉版本，**前缀必须是 `git+` 或 `github:`**：
+**③ git 源**（已发布：`git@github.com:dongasai/dsh_setting_pro.git`，当前 tag `0.11`）：URL 后加 `#<tag|分支|commit>` 钉版本，**前缀必须是 `git+` 或 `github:`**：
 
 ```bash
-dsh plugin --profile web add 'github:dongasai/dsh_setting_pro#0.10'   # 当前 tag 是 0.10
+dsh plugin --profile web add 'github:dongasai/dsh_setting_pro#0.11'   # 当前 tag 是 0.11
 ```
 
 坑（三条都踩过）：
@@ -395,8 +395,8 @@ DSH 版本四条：
   「更新通道」下拉只决定**拿哪条线做比较**（进而决定 logo 上有没有箭头），不改你的安装。
   要知道「重启后是不是变成新版」，重启完再看一次当前版本。
 - **工具名 `dsh_restart_*` 由本插件占用**；装其它提供同名工具的重启类插件会撞名。
-- 本仓库已入 git 并推到 `git@github.com:dongasai/dsh_setting_pro.git`（`main` + 附注标签 `0.10`）。
-  tag 用**裸版本号**：`0.10` ↔ `package.json` 的 `0.10.0`。
+- 本仓库已入 git 并推到 `git@github.com:dongasai/dsh_setting_pro.git`（`main` + 附注标签 `0.11`；`0.10` 是更早那个）。
+  tag 用**裸版本号**：`0.11` ↔ `package.json` 的 `0.11.0`。
 - **第一个 tag 就是 `0.10`**，早期 0.1.0…0.9.0 只是文档里的版本阶梯（`0.1.0` 指「控制项塞在通用里」
   的旧版），**没有对应 tag** —— 别按 tag 名推算功能顺序，也别去 `#0.9`（不存在）。
 

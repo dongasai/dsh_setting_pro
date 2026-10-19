@@ -45,7 +45,7 @@
 
 ```mermaid
 graph TD
-    R["(根) dsh_setting_pro<br/>@dongasai/dsh-setting-pro 0.10.0"]
+    R["(根) dsh_setting_pro<br/>@dongasai/dsh-setting-pro 0.11.0"]
     R --> P["cordis.patch.yml<br/>insert id=setting-pro"]
     R --> M["package.json<br/>dsh.bundle.patch / dsh.client"]
     R --> H["index.js · Host 半边<br/>路由 + 工具 + 重启引擎"]
@@ -368,11 +368,10 @@ IMPLEMENTATION / AGENTS / CHANGELOG）+ `.gitignore` + `.agents/index.json`。
   → 未注册时 SPA 兜底回 `200 text/html`，已注册（未认证）回 `403 application/json`。
   对照物：`/workspace-editor/write`（dsh_editor 的路由）一直是后者。别被 200 骗了。
 - 别把 `--dump-config` 的 EROFS 当 bug 去改 dsh 或 profile：那是沙箱只读，不是仓库问题。
-- 版本认知：`0.10.0` = 上面这些 + **「重启工具是否开放给 agent」开关** + **版本判定修 realpath**（当前）；
-  ⚠️ 名字暂时**不唯一**：用户选择「先只提交、不发版」，所以 `package.json` 仍是 `0.10.0`，
-  但 tag `0.10`（= 首个提交）**不含** realpath 那个修复，只有 `main` 的 HEAD 含。
-  下一次发版**必须 bump 到 `0.11` / `0.11.0`** 把这个歧义收掉，别再去覆盖 tag `0.10`
-  （已推到的引用不该被 force-push 改）。
+- 版本认知：`0.11.0`（当前，tag `0.11`）= 0.10.0 全部内容 + **「运行中」状态指示整体移除**
+  + 三栏设置页 / 版本通道与 logo 箭头 / 标题取 `agent.id` 的修复 / React 18 快照修复。
+  ✅ **0.10 的歧义已收掉**：tag `0.11` 打在「什么都有」的那个提交上，`package.json` 与 tag 一致。
+  tag `0.10` 保持原样（只指向首个提交，别 force-push 改已推引用）。
   `0.9.0` = 那一行的「供应商 · 模型 · 思考档位」并列一格；
   `0.8.0` = 状态指示常显两态、悬停出「工作区 · 会话」明细（**该功能已于 2026-10-19 整体移除**）；
   `0.7.0` = logo 后面的「运行中」指示（忙时才显示）（同上，已移除）；
@@ -381,14 +380,14 @@ IMPLEMENTATION / AGENTS / CHANGELOG）+ `.gitignore` + `.agents/index.json`。
   `0.3.0` = 重启与最后启动时间；`0.2.0` = 只有尺寸的独立「高级设置」页；
   `0.1.0` = 控制项塞在「通用」里的旧版。README 与探针里 `settings.general.item` 那条断言是相对旧版的。
 - 本仓库已入 git 且有远端：`origin = git@github.com:dongasai/dsh_setting_pro.git`，
-  分支 `main`（已设 upstream），当前 tag `0.10`（附注标签，指向 `package.json` 的 `0.10.0`）。
+  分支 `main`（已设 upstream），当前 tag `0.11`（附注标签，指向 `package.json` 的 `0.11.0`）。
   `git status` / `git log` 可用。提交信息按上面的中文约定格式；**发版三处一起动**：
   `package.json` 的 `version`、git tag（裸版本号）、本文件与 README 的版本行。
   提醒：首个 tag 是 `0.10`，0.1.0…0.9.0 没有 tag，只是文档里的版本阶梯。
 
 ## 变更记录 (Changelog)
 
-**完整变更史（20 条，从 init-architect 首次生成到当前）在 [CHANGELOG.md](CHANGELOG.md)** ——
+**完整变更史（21 条，从 init-architect 首次生成到当前）在 [CHANGELOG.md](CHANGELOG.md)** ——
 逐条原始记录照搬、不改写，含当时写错的数字与被后续推翻的结论。
 本节只留**最近两条**与**改文档时的连带项**：历史条目里的现场数字（探针项数 / 行数 / 字典键数 / 字号）
 都是当时快照，**别照着旧条目改代码**，一律以代码与 `node probe.mjs` 当前输出为准。

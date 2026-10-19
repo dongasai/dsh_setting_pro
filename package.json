@@ -1,6 +1,6 @@
 {
   "name": "@dongasai/dsh-setting-pro",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
   "description": "Resize the DSH Web settings dialog (default 800x800), group its controls on a dedicated Settings -> Advanced page, and add Host controls: restart / restart-when-idle, last start time, a dsh version / update check, a machine name that takes over the sidebar brand area (falling back to a line under the logo), an always-visible status chip next to the logo (running sessions with workspace and title details on hover, idle when nothing runs), and a read-only provider / model / thinking-level cell added beside the official composer performance-and-usage pills, plus a Host-side toggle for whether the three restart tools are exposed to agents (register/unregister at runtime, no restart needed).",
