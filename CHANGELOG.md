@@ -309,3 +309,44 @@
   变异测试：9 个方向全被咬（挂回品牌槽位 31 项、order 0 → 1 项、两态塌成 1 个 → 2 项、
   不画感叹号 → 3 项、抢 id → 1 项、未知也画 → 1 项、计数写死 → 2 项、aria 丢内容 → 2 项）。
   生效边界：箭头与通道选择在 `client.js`（刷新页面即可）；`?channel=` 与标题取 id 在 `index.js`（**要重启 dsh**）。
+
+- `2026-10-19T05:14:00+0800` · **修复：左下角的「运行中」在真机上根本不出现**（用户实测）。
+  根因：`busyStore.get()` 每次都 `return {…}` 新建对象。React 18 的 `useSyncExternalStore`
+  **明确要求 getSnapshot 结果被缓存** —— 每次新建会让它每渲染一次就判定「快照又变了」，
+  于是无限重渲染：开发模式抛 “The result of getSnapshot should be cached to avoid an infinite loop”，
+  生产模式表现为**组件根本挂不上来**。
+  **为什么探针 427 项全绿也看不见**：假 React 的 `useSyncExternalStore` 只是 `getSnapshot()` 调一次
+  拿返回值，**不跑渲染循环**。这是「假实现比真实现宽松」的第三例
+  （前两例：假 agents 同时给 `sessionId` 与 `id`、假 window 引用未声明的 `storage`）。
+  也解释了为什么以前没这问题：旧的「运行中」是**纯 DOM 注入**，不走 React；这轮改成槽位组件才踩到 ——
+  **换实现机制会引入旧机制不存在的失败模式**，这条是新增约束 29 的由来。
+  修法：store 里缓存 `_snapshot`，`get()` 返回同一引用直到 `set()` 置空重建（引用变化才是 React 认的「变了」）。
+  同时审计了另外四个 store 的 `get()`：`hostStatusStore` / `versionStore` / `modelPillStore` /
+  `settingsTabStore` / `machineNameStore` 都返回已存字段本身（引用稳定），只有 `busyStore` 每次新建。
+  验证：探针 427 → **430 项全绿**（新增三条：连续两次 get 同引用 / set 后换新引用 / 新引用立刻稳定）。
+  变异测试：`get()` 改回每次新建 → 2 项失败；`set()` 不置空快照 → 13 项失败
+  （第二个变异顺带把「空闲态」测红，说明状态推进本身就依赖引用变化）。
+  只改 `client.js` → **刷新页面**即生效，不用重启 dsh。
+
+- `2026-10-19T20:05:00+0800` · **「运行中」状态指示整体移除**（用户原话：「runging 部分,直接移除」）。
+  背景：这个指示一共搬过三次家 —— logo 后面（0.7.0，忙时才显示）→ 常驻两态 + 悬停明细（0.8.0）→
+  左下角 `sidebar.footer.action` 槽位（2026-10-19 上午）。用户看过真机截图后判定**这个功能本身不要了**，
+  不是位置问题，所以是**整个删掉**，而不是再挪一次。
+  删掉的东西（`client.js` 2263 → 2262 行，但删的多、净行数变化小是因为顺带补了注释）：
+  `busyStore`（含 `_snapshot` 缓存与 `known` 判据）、`signatureOf`、`runningHoverText`、
+  `describeChip`、`RunStatusChip`/`mountRunStatus`、`startBusySource`（5s `/status` 轮询）、
+  `FOOTER_SLOT`/`RUN_ID`/`RUN_ORDER`/`runStatusState`、整套 `.dspro_run*` 样式（药丸/圆点/呼吸动画/
+  空闲态/排程感叹号）、4 个字典键（`runLabel`/`runIdleLabel`/`runIdleHover`/`runArmedHover`），
+  以及探针里 44 条相关断言（430 → **386 项**，17 → 16 类）。
+  **保留的**：Host 侧 `/status` 的 `busy`/`runningCount`/`runningSessions` 一个字段都没动 ——
+  设置页 Host 分区那行状态（「当前空闲」/「有 N 个会话在运行」）和「空闲后就重启」的判据都还在用它们。
+  客户端只是不再单独为 chip 起一份 5 秒轮询，省掉一路请求。
+  删断言时踩到一个坑，已记进探针注释：把「第一轮 apply 的 disposer 循环」一起删掉了，
+  于是那个 30 秒对齐定时器仍在跑，把机器名节点插回下一段换上的假 DOM，
+  让「兜底: 卸载后节点撤掉」变成**假失败**（看着像功能坏了，其实是测试自己没收摊）。
+  连带更新：AGENTS 删掉原约束 21（状态指示）并把 22–29 重排为 21–28（共 **28 条**）、
+  测试策略删掉第 14 类并重排（**16 类**）、测试环境里 `Star` 那节的类号引用同步；
+  README 删掉功能表那一行、侧边栏示意图里的 chip、排错表 6 行、界面验证「状态指示五条」与已知边界一段；
+  IMPLEMENTATION §六 改写为「已移除：留作记录」，保留两条仍然成立的结论
+  （Host 口径 vs 只读 DOM 的取舍、React 18 快照引用那个坑），章节号不重排以免其它文档的引用失效。
+  ⚠️ 仍然要**刷新页面**才看得到变化（`client.js` 改动）。

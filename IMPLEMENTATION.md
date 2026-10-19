@@ -144,47 +144,37 @@ Host 侧缓存 6h。**一次网络抖动不得抹掉已有结论**：失败只�
 
 名字永远走 `textContent`（不是 `innerHTML`），Host 侧先剥控制字符/换行、折叠空白、截断 64 字。
 
-## 六、运行中指示：为什么用 Host 口径，而不是照抄 DOM
+## 六、「运行中」指示（已移除）：留作记录
 
-已装的 orca 皮肤（`@smalltailqwq/dsh-client-ui-skin-orca-link`）在 logo 后面有一个信号 chip，
-文案含 `TASK RUNNING`。它的判据是**纯读官方 DOM**：`[data-state='running']`、停止按钮图标
-`svg[data-orca-link-icon='stop']`、对话根 `[data-phase]`、`[data-approval-key]`/`[data-plan-review-key]`/
-`[data-question-key]`、composer 的 `[data-phase]`、以及 `[data-chat-flow]` 末行的
-`[data-state='error'|'interrupted']` 与 `data-chat-flow-kind="turn-tail"`；再配一个 MutationObserver
-（只过滤 5 个属性）+ transcript 防抖。
+**2026-10-19 按用户要求整体删除**（原话「runging 部分,直接移除」）。这一节保留结论与踩过的坑，
+因为其中两条对以后任何「在界面上加一个状态」的改动仍然成立。
 
-**它那样做是对的**：皮肤只需要反映「你正看着的那个会话」。我们不行 —— 这个指示要和
-「空闲后重启」说同一件事：**有没有会话在跑**。而重启的判据必须覆盖子代理、AgentTeams 成员、
-其它会话里的回合（Host 侧 `ctx.agents.list()` 里 `status === 'running'` 的个数）。
-如果指示改成读 DOM，就会出现「指示说空闲、排程却迟迟不重启」这种自相矛盾的界面。
+### 六.1 曾经的做法与为什么那样做
 
-所以：指示读 Host 的 `/status`（`busy` / `runningCount`），**5 秒**轮询一次（设置页自己另有 2 秒轮询；
-两处口径同一份数据，只是频率不同）。代价：
+它读 Host 的 `/status`（`busy` / `runningCount` / `runningSessions`），5 秒轮询，**不读官方 DOM**。
+对照物是 orca 皮肤：那个皮肤读 `[data-state='running']`、`[data-phase]`、`[data-approval-key]`
+等一堆 DOM 属性来判断「你正看着的会话」在不在跑 —— **它那样做是对的**，皮肤只需要反映当前挂载的会话。
+但这个指示当初的设计目标不同：它要和「空闲后重启」说同一件事，而重启的判据在 Host 侧
+（`ctx.agents.list()` 里 `status === 'running'` 的个数，覆盖子代理、AgentTeams 成员、其它会话）。
+若改成读 DOM，就会出现「指示说空闲、排程却迟迟不重启」的自相矛盾。
 
-- 最多晚 5 秒翻转；
-- 只说「有几个在跑」，不说是哪个会话；
-- Host 半边没加载（`/status` 拿不到）时**保持上一次结论**，不闪。
+### 六.2 换成槽位组件后为什么「什么都不显示」
 
-**位置与实现**：插在 `[class*="_brandIdentity"]` **之后**（与 orca 的信号 chip 同一个位置），
-复用「机器名兜底行」那套锚点/MutationObserver/卸载清理；文案走 `textContent`，
-`prefers-reduced-motion: reduce` 下不做呼吸动画。
+迁到 `sidebar.footer.action` 之后真机上一片空白，而探针全绿。根因是 React 18 的
+`useSyncExternalStore` 要求 `getSnapshot()` 返回**稳定引用**：原来每次 `return {…}` 都新建对象，
+React 判定「快照每帧都在变」→ 无限重渲染 → 生产环境里组件干脆挂不上。
+这是「假实现比真实现宽松」的第三例（前两例：假 agents 同时给 `sessionId` 与 `id`、
+假 window 引用未声明的 `storage`），已升格为**硬性约束 28**。
 
-### 六.1 常显两态与悬停明细（0.8.0）
+**换实现机制会引入旧机制不存在的失败模式**：同样是「显示一个状态」，纯 DOM 注入绕开了整个
+React 订阅链路，改成槽位组件就开始受 React 的相等性判定约束。这条比功能本身更值钱。
 
-用户反馈「没有运行中也给个提示」→ chip 改成**常驻两态**：忙 `● 运行中 ×N`（绿、呼吸），
-空闲 `● 空闲`（灰、静止）。三个刻意的细节：
+### 六.3 删掉之后留下了什么
 
-- **状态未知时不画**。`busyStore.known` 在第一次成功读到 `/status` 之前是 false ——
-  没读到 ≠ 空闲，画个「空闲」就是假回执（与约束 13「非 JSON 绝不当成功」同一个精神）。
-- **明细从 Host 来，不在浏览器猜**。`/status` 新增 `runningSessions: [{sessionId, workspace, title}]`：
-  `workspace` 用官方 `defaultWorkspaceTitle` 的同款算法（`basename(header.cwd)`，
-  这是 dshmarket 等已装插件也在读的公开字段）；`title` 读 `ctx.get('sessionTitle').get(session)` ——
-  可选服务，拿不到就留空，**查不到写空**。`running: string[]` 原契约不动、只加字段，
-  所以旧客户端照常工作；反过来新客户端遇到旧 Host（没这字段）就回退成纯计数悬停。
-- **标题必须缓存**。`sessionTitle.get()` 的实现是 `foldSessionTitle(session.snapshotEvents())`，
-  每次扫全量事件；而 `/status` 会被两路轮询反复读（设置页 2s + 指示 5s）。所以按 sessionId
-  缓存 `TITLE_TTL_MS = 30s`（悬停新鲜 30 秒足够），会话不在时清掉条目。
-  取工作区与取标题**各自包 try**：标题失败不能把已经拿到的工作区一起丢掉。
+- Host 侧 `/status` 的 `busy` / `runningCount` / `runningSessions` 字段**一个没动**：
+  设置页 Host 分区那行状态、以及「有空闲就重启」的判据都还在用它们；
+- 客户端只少了 chip 本身（`busyStore` / `describeChip` / `RunStatusChip` / 5s 轮询）；
+- 「首次读到状态前不画」这类判据随 chip 一起消失，但它的**理由**（未知 ≠ 空闲）保留在约束里。
 
 ## 七、客户端：为什么「非 JSON 响应」一律当失败
 
@@ -387,16 +377,17 @@ HTTP 处理函数里被调的，那个 effect 仍挂在**本插件的 fiber** �
 这正是 2026-10-18 那个版本误报 bug 的反面（当时把 nvs 的 `1.7.1` 当 dsh 版本，导致永远「已是最新」；
 反过来「基准不可信但照样标箭头」同样是在骗人）。
 
-arrow 的位置在品牌身份之后、与「运行中」分开：`运行中` 已经迁到左下角，logo 那一行现在只有
-「机器名 + 可选箭头」，宽度压力从「名字要省略」降到几乎没有。
+arrow 的位置在品牌身份之后。logo 那一行现在只有「机器名 + 可选箭头」两样东西
+（「运行中」指示已整体移除），宽度压力比早先「名字 + chip + 按钮」时小得多，
+但 `.dspro_brandName` 的 `min-width:0` 仍然不能删 —— 名字一长还是要靠省略号收场。
 
 ## 相关文件
 
 | 文件 | 作用 |
 | --- | --- |
 | [README.md](README.md) | 怎么用：装、用、协议、排错、验证、边界 |
-| [AGENTS.md](AGENTS.md) | 给 agent 的约束与改动连带项（28 条硬性约束，`awk '/^## 硬性约束/,/^## AI/' AGENTS.md \| grep -c '^[0-9]\+\. \*\*'`） |
+| [AGENTS.md](AGENTS.md) | 给 agent 的约束与改动连带项（27 条硬性约束，`awk '/^## 硬性约束/,/^## AI/' AGENTS.md \| grep -c '^[0-9]\+\. \*\*'`） |
 | [CHANGELOG.md](CHANGELOG.md) | 完整变更史（原始记录照搬；新增条目写这里，不往 AGENTS 那节堆） |
 | [index.js](index.js) | Host 半边：7 条路由 + 3 个工具（带网关注册/注销）+ 重启引擎 + 版本检查 + 状态文件存取 |
 | [client.js](client.js) | 浏览器半边：CSS 覆盖、设置页（三分区）、品牌区顶替、DOM 兜底、左下角状态指示、那一行的模型格、更新通道与 logo 箭头 |
-| [probe.mjs](probe.mjs) | 静态回归探针（427 项，不出网、不写真实状态文件） |
+| [probe.mjs](probe.mjs) | 静态回归探针（386 项，不出网、不写真实状态文件） |

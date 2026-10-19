@@ -107,16 +107,8 @@ window.__ModuleLoader__.load({
 		 * `dom`＝槽位占位失败、退回 logo 下面的小字｜`init`＝还没决定。
 		 */
 		const machineBrandState = { mode: 'init', reason: '' };
-		/** 「运行中」指示的类名（挂在品牌身份后面，与 orca 皮肤同一个位置）。 */
-		const RUN_CLASS = 'dspro_run';
-		const RUN_LABEL_CLASS = 'dspro_runLabel';
-		/** 排程标记那个感叹号（单独一个 span，才能只给它 warn 色）。 */
-		const RUN_BANG_CLASS = 'dspro_runBang';
 		/** logo 上的「有更新」箭头（向上）。 */
 		const UPDATE_CLASS = 'dspro_update';
-		const RUN_DOT_CLASS = 'dspro_runDot';
-		/** 为这个指示轮询 `/status` 的间隔（设置页自己还有 2s 的轮询，这里够用就好）。 */
-		const RUN_POLL_MS = 5000;
 		/**
 		 * 「性能与用量」那一行（官方 list 槽 `conversation.composer.dock`）里我们自己的格子。
 		 *
@@ -146,22 +138,7 @@ window.__ModuleLoader__.load({
 		/** 槽位挂载失败时的真实原因（设置页要说出来，不静默吞掉）。 */
 		const modelPillState = { mounted: false, reason: '' };
 		/**
-		 * 「运行中」指示挂在左侧导航**左下角**的 `sidebar.footer.action`。
-		 *
-		 * 侦察记录（2026-10-19）：官方 `dsh-client-ui-sidebar` 把这个槽位声明成
-		 * `kind: "list"`、`scope: "root"`，渲染在 `footArea > footerActions` 里，
-		 * 并把 `{ wide }` 透给注册者；官方自己只占 `id: "cordis-panel"` 一格。
-		 * 所以这里用**我们自己的 id** 并列（与约束 23 同一套判断：list 槽按 id 分格，
-		 * 不同 id 都会渲染，位置只由 order 决定）—— 不抢别人的格子。
-		 */
-		const FOOTER_SLOT = 'sidebar.footer.action';
-		const RUN_ID = 'run-status';
-		/** 排在官方 cordis 面板之后（它没写 order，默认 0）。 */
-		const RUN_ORDER = 10;
-		/** 槽位挂载失败时的真实原因（设置页要说出来，不静默吞掉）。 */
-		const runStatusState = { mounted: false, reason: '' };
-		/**
-		 * 「显示模型信息」开关：默认开。和 `busyStore` 一样是极简外部 store，
+		 * 「显示模型信息」开关：默认开。极简外部 store（与本文件其它几个 store 同款），
 		 * 设置页的勾选框与那一行的 pill 都读它，改完立刻在两处生效（不用刷新）。
 		 */
 		const modelPillStore = {
@@ -352,86 +329,6 @@ window.__ModuleLoader__.load({
 				usingIds
 			};
 		};
-		/** 把会话列表拼成签名（用于「内容是否真的变了」的比较）。 */
-		const signatureOf = (sessions) => (Array.isArray(sessions) ? sessions : [])
-			.map((item) => String(item?.workspace ?? '') + '\u0000' + String(item?.title ?? '') + '\u0000' + String(item?.sessionId ?? ''))
-			.join('\u0001');
-		/**
-		 * chip 的悬停文本：每个在跑的会话一行「工作区 · 会话标题」，缺失的部分自动省掉。
-		 * 没有任何可读明细（旧 Host / 元信息缺失）就返回空串，界面退化成只显示计数。
-		 * @param sessions - `[{ sessionId, workspace, title }]`。
-		 * @returns 多行文本（可能为空）。
-		 */
-		const runningHoverText = (sessions) => (Array.isArray(sessions) ? sessions : [])
-			.map((item) => [String(item?.workspace ?? '').trim(), String(item?.title ?? '').trim()].filter((part) => part !== '').join(' · '))
-			.filter((line) => line !== '')
-			.join('\n');
-		/**
-		 * 「现在有没有会话在跑」——唯一来源是 Host 的 `/status`（`busy` / `runningCount` / `runningSessions`）。
-		 *
-		 * 刻意**不**照 orca 皮肤那样读官方 DOM 的 `[data-state='running']`：那只是**当前挂载会话**的 UI 状态，
-		 * 会漏掉子代理、AgentTeams 成员、其它会话里的回合；而「空闲后重启」用的正是 Host 口径 ——
-		 * 同一页面上两个地方说「忙不忙」，口径必须一致，否则用户会看到「显示空闲却迟迟不重启」。
-		 * `sessions` 是 `[{ sessionId, workspace, title }]`，只用来给 chip 拼悬停文本。
-		 */
-		const busyStore = {
-			busy: false,
-			runningCount: 0,
-			sessions: [],
-			/** 是否已排程「空闲后重启」。未知（还没读到）按 false：不猜一个感叹号给用户。 */
-			armed: false,
-			/** 第一次成功读到 `/status` 之前是 false：状态未知就不画，别猜一个「空闲」给用户。 */
-			known: false,
-			listeners: new Set(),
-			/**
-			 * ⚠️ `get()` 必须返回**同一个对象引用**，直到真的变了（`_snapshot` 在 `set()` 里重建）。
-			 *
-			 * React 18 的 `useSyncExternalStore` 明确要求 getSnapshot 结果被缓存：每次新建对象
-			 * 会让它每渲染一次就判定「快照又变了」，于是无限重渲染 —— 开发模式下抛
-			 * “The result of getSnapshot should be cached to avoid an infinite loop”，
-			 * 生产模式下表现为组件**根本挂不上来**（2026-10-19 用户实测「运行中没有出现在左下角」）。
-			 * 假 React 只是直接调一次 `get()`，所以探针 427 项全绿也看不见这个坑。
-			 */
-			_snapshot: null,
-			get() {
-				if (busyStore._snapshot === null) {
-					busyStore._snapshot = {
-						busy: busyStore.busy,
-						runningCount: busyStore.runningCount,
-						sessions: busyStore.sessions,
-						armed: busyStore.armed,
-						known: busyStore.known
-					};
-				}
-				return busyStore._snapshot;
-			},
-			/** 把 sessions 拼成签名：busy/count 没变但标题变了，chip 的悬停文本也要跟上。 */
-			_signature() {
-				return signatureOf(busyStore.sessions);
-			},
-			set(next) {
-				const busy = next !== null && next.busy === true;
-				const count = next !== null && typeof next.runningCount === 'number' ? next.runningCount : 0;
-				const sessions = next !== null && Array.isArray(next.sessions) ? next.sessions : [];
-				const armed = next !== null && next.armed === true;
-				// ⚠️ `armed` 必须一起比：只比 busy/count/sessions 的话，「点了空闲后重启、但此刻
-				// 会话状态没变」那一帧会被短路掉，感叹号要等下一次别的字段变化才出现。
-				if (busyStore.known === true && busy === busyStore.busy && count === busyStore.runningCount
-					&& armed === busyStore.armed && signatureOf(sessions) === busyStore._signature()) return;
-				busyStore.busy = busy;
-				busyStore.runningCount = count;
-				busyStore.sessions = sessions;
-				busyStore.armed = armed;
-				// 换一个新快照对象（引用变化才是 useSyncExternalStore 认的「变了」）。
-				busyStore._snapshot = null;
-				busyStore.known = true;
-				for (const listener of [...busyStore.listeners]) listener(busyStore.get());
-			},
-			subscribe(listener) {
-				busyStore.listeners.add(listener);
-				return () => busyStore.listeners.delete(listener);
-			}
-		};
 		/** 界面读 Host 状态的轮询间隔。 */
 		const OPS_POLL_MS = 2000;
 		/** 开箱尺寸：比官方 800×800 明显大一档。 */
@@ -508,30 +405,16 @@ window.__ModuleLoader__.load({
 			// 且 `align-items:center`，超过就会把这一行的行盒撑高。实测官方自己的字号是 18px/24px，
 			// 我们 20px 塞在 24px 行盒里不会裁（容器不是 overflow:hidden），只是上下没有余量。
 			// logoRow 是 `height:60px; padding:8px 0`（净 44px），竖向装得下。
-			// **横向装不下，所以 `min-width:0` 是必需的、不是装饰**：官方侧栏 188px、logoRow 净宽 ≈184
-			// （`justify-content:flex-end` + `overflow:hidden`），而同一行里还要放状态 chip 与收起按钮
-			// （chip 16px 下「空闲」≈66px、「运行中 ×4」≈115px，加 gap/按钮后留给名字的只有几十 px，
-			// 20px 的 `PVE-Work` 要 ≈90px）。flex 项默认 `min-width:auto` 会拒绝收缩到内容以下 ——
+			// **横向要留出余量，所以 `min-width:0` 是必需的、不是装饰**：官方侧栏 188px、logoRow 净宽 ≈184
+			// （`justify-content:flex-end` + `overflow:hidden`），同一行里还要放「有更新」箭头与收起按钮，
+			// 20px 的 `PVE-Work` 就要 ≈90px。flex 项默认 `min-width:auto` 会拒绝收缩到内容以下 ——
 			// 那时 `text-overflow:ellipsis` 根本不生效，浏览器改从 logoRow 的 overflow 端**裁掉名字开头**。
 			// 给了 `min-width:0`（并把 shrink 显式写回 1，别被别处的 `flex:none` 带歪）才会优雅省略号。
 			// chip 自己是 `flex:none`：宁可名字省略号，也不能把状态指示挤没 —— 它是「忙不忙」的唯一入口。
 			'.dspro_brandName{color:var(--dsw-alias-label-primary);font-size:20px;font-weight:600;line-height:24px;letter-spacing:.01em;min-width:0;flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}',
-			// 「运行中」药丸：挂在品牌身份后面（logo 后面）。用户要 16px（2026-10-18）；
-			// 字号一起放大的是行高/内距/圆点；行高只给 20px（药丸自己 2px 内距 = 24px 总高），
-// 因为官方 `_brandIdentity` 那个容器写死 `height:24px`，再高就会把整行撑变形。
-			'.' + RUN_CLASS + '{box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary);font-size:16px;font-weight:600;line-height:20px;white-space:nowrap;user-select:none;-webkit-user-select:none}',
 			// logo 上的更新箭头：warn 色、不占额外行高（品牌行只有 24px 行盒）。
 			'.' + UPDATE_CLASS + '{box-sizing:border-box;display:inline-flex;align-items:center;flex:none;margin-left:6px;color:var(--dsw-alias-state-warn-primary);cursor:help}',
 			'.' + UPDATE_CLASS + ' svg{display:block}',
-			'.' + RUN_DOT_CLASS + '{width:7px;height:7px;border-radius:50%;background:currentColor;animation:dsproRunPulse 1.4s ease-in-out infinite}',
-			// 空闲态：灰一点、不呼吸（只用确认存在的 token：state-idle 只有 primary 一档，背景留透明）。
-			'.' + RUN_CLASS + '[data-state="idle"]{background:transparent;color:var(--dsw-alias-state-idle-primary)}',
-			'.' + RUN_CLASS + '[data-state="idle"] .' + RUN_DOT_CLASS + '{animation:none;opacity:.55}',
-			'.' + RUN_LABEL_CLASS + '{font-variant-numeric:tabular-nums}',
-			// 排程感叹号：只用确认存在的 token（`--dsw-alias-state-warn-primary` 本机实测 11 处引用）。
-			'.' + RUN_BANG_CLASS + '{color:var(--dsw-alias-state-warn-primary);font-weight:700;line-height:1}',
-			'@keyframes dsproRunPulse{0%,100%{opacity:1}50%{opacity:.25}}',
-			'@media (prefers-reduced-motion:reduce){.' + RUN_DOT_CLASS + '{animation:none}}',
 			// 「性能与用量」那一行里我们自己的格子：外观对齐官方 pill（同一档字号、同样的 hover 面）。
 			// 字号取官方 StatsPills 用的 `content-font-size-secondary - 1px`，跟着界面字号走。
 			'.' + MODEL_CLASS + '{box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0;border:none;border-radius:999px;padding:1px 8px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}',
@@ -638,10 +521,6 @@ window.__ModuleLoader__.load({
 				machineBrandDom: '槽位占位失败，已退回 logo 下面的小字（备用方式）',
 				machineBrandOff: '还没设名字，左上角仍是官方 logo。',
 				machineBrandPending: '正在等侧边栏挂上，随后决定怎么显示。',
-				runLabel: '运行中',
-				runIdleLabel: '空闲',
-				runIdleHover: '当前没有会话在运行',
-				runArmedHover: '已排程：等所有会话空闲后重启 DSH',
 				tabUi: 'UI',
 				tabHost: 'Host',
 				tabAgent: 'Agent',
@@ -759,9 +638,6 @@ window.__ModuleLoader__.load({
 				machineBrandDom: 'Slot takeover failed, so the name falls back to the small line under the logo',
 				machineBrandOff: 'No name set yet — the top-left still shows the official logo.',
 				machineBrandPending: 'Waiting for the sidebar to mount before deciding how to show it.',
-				runLabel: 'RUNNING',
-				runIdleLabel: 'IDLE',
-				runArmedHover: 'Scheduled: dsh restarts once every session is idle',
 				tabUi: 'UI',
 				tabHost: 'Host',
 				tabAgent: 'Agent',
@@ -774,7 +650,6 @@ window.__ModuleLoader__.load({
 				channelMissingPrefix: '⚠ That channel has no published version in the registry:',
 				updateHoverPrefix: 'dsh update available: ',
 				updateHoverChannel: 'channel ',
-				runIdleHover: 'No sessions are running',
 				modelGroupTitle: 'Composer stats row',
 				modelGroupIntro: 'The official UI shows “N turns N steps · tok/s” and token usage there. This plugin adds one cell on the SAME row, beside them: provider · model · thinking level — the two official pills stay untouched.',
 				modelPillShow: 'Show model info',
@@ -1023,100 +898,6 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * 「运行中」指示：挂在侧边栏**左下角** `sidebar.footer.action` 槽位（list 槽，scope root）。
-		 *
-		 * 2026-10-19 用户要求从左上角品牌行挪到这里。走槽位而不是 DOM 注入：
-		 * 官方那个槽位就是给「脚部动作」用的（cordis 面板也占它的 `id: cordis-panel`），
-		 * 由官方负责布局与 rail 折叠，我们不用自己算位置、也不会把品牌行挤变形。
-		 *
-		 * 两态常显（0.8.0 的语义不变）：忙 → 绿色「运行中 ×N」；闲 → 灰色「空闲」。
-		 * 数据仍读 `busyStore`（Host `/status` 口径，约束 21），**没读到过就不画**。
-		 * 已排程空闲重启时，文字后加一个橙色感叹号（2026-10-18 的要求）。
-		 */
-		/**
-		 * 「运行中」那一格该长什么样。纯函数：**判据（含「未知不画」）在这里**，
-		 * 组件只负责把结果变成节点 —— 这样探针能喂任意状态（包括「从没读到过」），
-		 * 不必跟模块级 `busyStore` 的当前值较劲。
-		 * @param state - `busyStore.get()` 或 `null`。
-		 * @param t - 字典函数。
-		 * @returns `null`（不画）或 `{ text, title, aria, state, armed }`。
-		 */
-		function describeChip(state, t) {
-			if (state === null || typeof state !== 'object' || state.known !== true) return null;
-			const busy = state.busy === true;
-			const count = typeof state.runningCount === 'number' ? state.runningCount : 0;
-			const armed = state.armed === true;
-			const text = busy
-				? t('runLabel') + (count > 1 ? ' ×' + String(count) : '')
-				: t('runIdleLabel');
-			const armedHint = armed ? '\n' + t('runArmedHover') : '';
-			let title;
-			if (busy) {
-				const hover = runningHoverText(state.sessions);
-				title = (hover === '' ? text : text + '\n' + hover) + armedHint;
-			} else {
-				title = t('runIdleHover') + armedHint;
-			}
-			return {
-				text,
-				title,
-				// 读屏拿不到悬停文本，把换行换成「；」拼进无障碍名。
-				aria: title.replace(/\n/gu, '；'),
-				state: busy ? 'running' : 'idle',
-				armed
-			};
-		}
-
-		function RunStatusChip({ t }) {
-			const state = React.useSyncExternalStore(
-				(listener) => busyStore.subscribe(listener),
-				() => busyStore.get()
-			);
-			const described = describeChip(state, t);
-			if (described === null) return null;
-			const { text, title, aria, armed } = described;
-			return h('span', {
-				className: RUN_CLASS,
-				'data-plugin': '@dongasai/dsh-setting-pro',
-				'data-state': described.state,
-				'data-armed': armed ? '1' : '0',
-				role: 'img',
-				// 非交互（点它不做事），所以不给 tabIndex；但读屏要能拿到含义与明细。
-				'aria-label': aria,
-				title
-			}, [
-				h('span', { key: 'dot', className: RUN_DOT_CLASS }),
-				h('span', { key: 'label', className: RUN_LABEL_CLASS }, text),
-				armed ? h('span', { key: 'bang', className: RUN_BANG_CLASS, 'aria-hidden': 'true' }, '!') : null
-			]);
-		}
-
-		/**
-		 * 把「运行中」挂到左下角 footer 槽位。
-		 * 失败只记原因、不抛（约束 24：槽位回调在声明那一刻跑，异常会连累别的插件）。
-		 */
-		function mountRunStatus(ctx, t) {
-			runStatusState.mounted = false;
-			runStatusState.reason = '';
-			ctx.slots.inject(FOOTER_SLOT, () => {
-				try {
-					ctx.slots.register({
-						name: FOOTER_SLOT,
-						id: RUN_ID,
-						order: RUN_ORDER,
-						label: () => t('runLabel'),
-						locale: NS
-					}, () => h(RunStatusChip, { t }));
-					runStatusState.mounted = true;
-					runStatusState.reason = '';
-				} catch (error) {
-					runStatusState.mounted = false;
-					runStatusState.reason = error instanceof Error ? error.message : String(error);
-				}
-			});
-		}
-
-		/**
 		 * 「Host 运维」块：重启 DSH / 空闲后重启 / 取消排程 + 当前状态。
 		 *
 		 * 三个动作都打 Host 半边的路由；忙时「立即重启」拿回 409，界面用一次
@@ -1309,7 +1090,7 @@ window.__ModuleLoader__.load({
 		 *
 		 * 「Host 运维」块与「开放给 agent」块都要读它（后者要显示实际注册状态）。
 		 * 各自轮询会变成两份 2s 请求，所以轮询只起一次、两块共读一份。
-		 * 与 `busyStore` 同理：做成 store 而不是组件内 `useState`，探针才能直接喂状态。
+		 * 做成 store 而不是组件内 `useState`，探针才能直接喂状态。
 		 */
 		const hostStatusStore = {
 			value: null,
@@ -2213,39 +1994,6 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * 「有没有会话在跑」的来源：每 `RUN_POLL_MS` 读一次 `/status` 写进 `busyStore`。
-		 * 读不到（Host 半边没加载 / 网络抖动）时**保持上一次结论**，不让指示闪来闪去。
-		 * @returns `{ dispose }`。
-		 */
-		function startBusySource() {
-			let timer = null;
-			let disposed = false;
-
-			const read = async () => {
-				const result = await fetchStatus();
-				if (disposed || result.payload === undefined) return;
-				busyStore.set({
-					busy: result.payload.busy === true,
-					runningCount: typeof result.payload.runningCount === 'number' ? result.payload.runningCount : 0,
-					sessions: Array.isArray(result.payload.runningSessions) ? result.payload.runningSessions : [],
-					armed: result.payload.armed === true
-				});
-			};
-
-			timer = window.setInterval(() => {
-				void read();
-			}, RUN_POLL_MS);
-			void read();
-
-			return {
-				dispose() {
-					disposed = true;
-					if (timer !== null) window.clearInterval(timer);
-				}
-			};
-		}
-
-		/**
 		 * 机器名字的来源：进页面读一次、30s 轮询、同页面保存走自定义事件，全部写进 store。
 		 * @returns `{ dispose }`。
 		 */
@@ -2284,8 +2032,8 @@ window.__ModuleLoader__.load({
 		 *
 		 *   ① **机器名兜底行**：`startBrandReplacement()` 占位失败（`mode === 'dom'`）时，
 		 *      在 logo 行**下面**插一行小字。
-		 *   ② **「运行中」指示**：有会话在跑时，在品牌身份**后面**插一个小药丸（`● 运行中 ×2`），
-		 *      位置与 orca 皮肤的信号 chip 相同（logo 后面）。
+		 *   ② **「有更新」箭头**：所选更新通道有新版本时，在品牌身份**后面**插一个向上的箭头。
+		 *      （原先这里还有 ③「运行中」指示，2026-10-19 按用户要求整体移除，见 CHANGELOG。）
 		 *
 		 * 锚点用**类名后缀**：官方 CSS Modules 是 `<hash>_logoRow` / `<hash>_brandIdentity`
 		 * （本机实测 `Xa_logoRow`），哈希每次构建会变、本地名稳定。再退到
@@ -2356,7 +2104,7 @@ window.__ModuleLoader__.load({
 				}
 
 				// ② 「有更新」箭头（向上）：挂在品牌身份之后。
-				// 「运行中」指示已迁到左下角 footer 槽位（见 RunStatusChip），这里只管更新提示。
+				// 这里只管**更新提示**（「运行中」指示已按用户要求整体移除）。
 				// 判据来自共享的 versionStore —— 与设置页那块读同一份，两处不会给两个结论。
 				const pending = updateAvailable(versionStore.get());
 				if (pending === null || identity === null) {
@@ -2402,7 +2150,7 @@ window.__ModuleLoader__.load({
 			};
 
 			unsubscribes.push(machineNameStore.subscribe(scheduleSync));
-			// 「运行中」已迁到左下角 footer 槽位（RunStatusChip 自己订阅 busyStore），这里不再订阅。
+			// 不再订阅运行状态（「运行中」指示已移除）。
 			// 版本结论一变（轮询回来 / 用户换通道）就重画箭头。
 			unsubscribes.push(versionStore.subscribe(scheduleSync));
 			// MutationObserver 在所有现代浏览器都有；真没有就只靠定时器对齐（不致命）。
@@ -2449,12 +2197,6 @@ window.__ModuleLoader__.load({
 				return () => source.dispose();
 			}, 'setting-pro: machine name source');
 
-			// 「有没有会话在跑」：5s 轮询 /status → busyStore（品牌行上的运行指示用）。
-			ctx.effect(() => {
-				const source = startBusySource();
-				return () => source.dispose();
-			}, 'setting-pro: busy source');
-
 			// 版本与更新通道：轮询 /version → versionStore（设置页那块与 logo 上的箭头读同一份）。
 			// 必须在 apply 里起，不能只挂在 VersionBlock 上 —— 那个组件只在打开设置页时挂载，
 			// 而用户要的是 logo 处**常驻**的更新箭头。
@@ -2469,20 +2211,11 @@ window.__ModuleLoader__.load({
 				return () => brand.dispose();
 			}, 'setting-pro: brand replaced by the machine name');
 
-			// 品牌行上的 DOM 补充：机器名兜底行 + 「运行中」指示。
+			// 品牌行上的 DOM 补充：机器名兜底行 + 更新箭头。
 			ctx.effect(() => {
 				const extras = startBrandExtras(t);
 				return () => extras.dispose();
 			}, 'setting-pro: brand row extras (name fallback + update arrow)');
-
-			// 「运行中」指示：左下角 footer 槽位（2026-10-19 从品牌行迁来）。
-			// 挂不上（老版本没这个槽 / 注册抛错）就什么都不画 —— 失败原因记在 runStatusState。
-			try {
-				mountRunStatus(ctx, t);
-			} catch (error) {
-				runStatusState.mounted = false;
-				runStatusState.reason = error instanceof Error ? error.message : String(error);
-			}
 
 			// 「性能与用量」那一行旁边加一格：供应商 · 模型 · 思考档位（list 槽，官方两条保留）。
 			// 挂不上（老版本 dsh 没这个槽 / 注册抛错）就什么都不画，设置页会说原因。
@@ -2510,8 +2243,6 @@ window.__ModuleLoader__.load({
 			probe: {
 				agentToolsSummary,
 				agentToolsClass,
-				describeChip,
-				busyStore,
 				settingsTabStore,
 				tabOfBlock,
 				versionStore,

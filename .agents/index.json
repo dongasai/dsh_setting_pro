@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-16T23:37:54+0800",
-  "updatedAt": "2026-10-19T05:20:00+0800",
+  "updatedAt": "2026-10-19T20:15:00+0800",
   "generator": "init-architect (dsh user skill ~/.dsh/skills/init-architect)",
   "root": ".",
   "rootDoc": "AGENTS.md",
@@ -102,9 +102,8 @@
         "client 品牌区顶替: startBrandReplacement(ctx) 等 slots.inject 声明后，用 ctx.slots.register({name:'sidebar.brand.mark'|'sidebar.brand.name', priority:-1}, …) 顶掉官方 priority 0 的占用者；只在有名字时占位，清空即撤销（官方 logo 自动回来）；失败则 machineBrandState.mode='dom'",
         "client DOM 兜底: startMachineLabel() 只在 mode==='dom' 时把名字插到 [class*=\"_logoRow\"] 之后（类名后缀，哈希会变但本地名稳定）；名字走 textContent；MutationObserver + 30s 轮询；卸载撤节点",
         "client 名字来源: machineNameStore（进页面读一次 + 30s 轮询 + 同页面事件 dsh-setting-pro:machine-name）→ useMachineName()/品牌组件/设置页共用",
-        "client 运行指示: busyStore（Host /status 的 busy/runningCount，5s 轮询）→ 有会话在跑时在 [class*=\"_brandIdentity\"] 之后插 .dspro_run（● 运行中 ×N，textContent + title，prefers-reduced-motion 不闪），空闲即撤；与「空闲后重启」同口径（跨会话），刻意不用官方 DOM 的 [data-state=running]",
+        "client 运行指示已移除（2026-10-19 用户要求）：busyStore / describeChip / RunStatusChip / mountRunStatus / startBusySource / .dspro_run* 样式全部删除；Host 侧 /status 的 busy/runningCount/runningSessions 字段保留（设置页状态行与空闲重启判据仍在用）",
         "status 新增 runningSessions: [{sessionId, workspace, title}]（running: string[] 原契约不动；workspace=basename(header.cwd)，title 取可选服务 sessionTitle.get，取不到留空；标题按 sessionId 缓存 30s）",
-        "client 状态指示常显两态: busyStore{busy,runningCount,sessions,known}（未知不画）→ .dspro_run[data-state=running|idle]，忙时悬停多行「工作区 · 会话标题」（runningHoverText + signatureOf）",
         "ctx.slots.inject('conversation.composer.dock') / ctx.slots.register({ name, id: 'model-usage', order: 1, locale }, ModelUsagePill) —— list 槽并列（官方 stats id/order0 保留），组件不写 priority；register 包在回调内 try（官方 notifyDeclaration 不隔离异常），失败记 modelPillState.reason 显示在设置页",
         "model info data source: optional service ctx.get('modelDirectories') -> directoryFor(sessionId).store {current:{provider,model,reasoningEffort}, groups:[{id,name,models:[{id,name,reasoning:{efforts,defaultEffort}}]}], retainedEffort}; fallback session projection useProjection('modelSelection') {next,lastUsed} = internal ids only; pill hidden when neither has a selection (never draw an unknown placeholder)",
         "7 条路由（新增 GET/POST /setting-pro/agent-tools：GET {enabled, exposed, names[], path, error}；POST {enabled:boolean 必填} → 即时注册/注销三个工具，不用重启 dsh；非布尔 400、非 GET/POST 405）",
@@ -208,7 +207,7 @@
   "verificationRun": [
     {
       "command": "node probe.mjs",
-      "result": "passed (全部通过（427 项）：宿主判据/命令构造/空闲状态机/路由与工具契约/版本比较与更新检查（含通道）/机器名与开关存取/组件渲染/品牌区顶替与 DOM 兜底/设置页三分区/左下角 footer 状态指示（含 describeChip 判据）/模型格/产物形状)"
+      "result": "passed (全部通过（386 项）：宿主判据/命令构造/空闲状态机/路由与工具契约/版本比较与更新检查（含通道）/机器名与开关存取/组件渲染/品牌区顶替与 DOM 兜底/设置页三分区/版本通道与更新箭头/模型格/产物形状)"
     },
     {
       "command": "node --check index.js && node --check client.js && node --check probe.mjs",
@@ -240,12 +239,12 @@
     "「开放给 agent」开关对**已开场**的回合不追溯：工具列表是那次请求发给模型的，正在跑的那轮仍可能带着它调用（设计上如此，README 已知边界已写明）；未在真实页面上验证",
     "本仓库无 CI：推送后没有任何自动检查，门只有本地的 node probe.mjs + node --check（改完必须手跑）",
     "dsh 版本判定的 realpath 修复（2026-10-18）需要重启 dsh 才生效，本会话不能自重启；重启后界面须显示 0.2.0-rc.2 / 来源 package，尚未在界面验证",
-    "文档里的现场数字（探针项数 / 行数 / 字典键数 / localStorage 键数）必须现算：`node probe.mjs` 末行、`wc -l`、`grep -o \"dsh.setting-pro.[a-zA-Z-]*\" client.js | sort -u`；2026-10-19 已把它们同步到 427 项 / 119 键 / 5 个 localStorage 键"
+    "文档里的现场数字（探针项数 / 行数 / 字典键数 / localStorage 键数）必须现算：`node probe.mjs` 末行、`wc -l`、`grep -o \"dsh.setting-pro.[a-zA-Z-]*\" client.js | sort -u`；2026-10-19 已把它们同步到 386 项 / 115 键 / 5 个 localStorage 键"
   ],
   "nextSteps": [
     "下次发版：package.json bump 到 0.11.0 + tag `0.11` + README 版本行 + AGENTS 版本阶梯 + CHANGELOG 新条目（别 force-push tag 0.10）",
     "index.js 的改动（通道参数、标题取 id 的修复）需重启 dsh 才生效；沙箱内无法自重启，需用户操作或页面按钮",
-    "浏览器观感项仍需人工确认：左下角状态指示位置与字号、logo 更新箭头、设置页三分区排版",
+    "浏览器观感项仍需人工确认：logo 更新箭头、设置页三分区排版",
     "把 CHANGELOG.md 纳入「相关文件」表已做；后续新增变更条目一律写它，不再往 AGENTS 那节堆"
   ]
 }

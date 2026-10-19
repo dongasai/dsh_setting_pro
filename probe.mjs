@@ -986,174 +986,8 @@ check('品牌区: 机器名字号 20px（用户指定）', /\.dspro_brandName\{[
 check('品牌区: 机器名允许收缩（min-width:0 + shrink 1），否则长名字会被裁头而不是省略号',
 	/\.dspro_brandName\{[^}]*min-width:0[^}]*flex:0 1 auto/.test(clientSource));
 check('品牌区: 机器名行高不超过官方 24px 行盒', /\.dspro_brandName\{[^}]*line-height:24px/.test(clientSource));
-check('运行指示: chip 字号 16px（用户指定）', /RUN_CLASS \+ '\{[^']*font-size:16px[^']*line-height:20px/.test(clientSource));
 const findLabel = () => fakeDocument.body.querySelectorAll('.dspro_machine')[0] ?? null;
 check('品牌区: 顶替成功时不再画 DOM 兜底那一行（避免重复）', findLabel() === null);
-
-// —— 「运行中」指示（2026-10-19 起挂在左下角 footer 槽位，不再注入品牌行）——
-// 槽位注册项：官方 `sidebar.footer.action` 是 list 槽（scope root），官方自己只占 cordis-panel。
-const footerRegistration = fakeSlots.registrations.find((entry) => entry.options.name === 'sidebar.footer.action') ?? null;
-check('运行指示: 注册到 sidebar.footer.action（左下角），不再抢品牌行', footerRegistration !== null);
-equal('运行指示: 用自己的 id（不抢官方 cordis-panel 的格子）', footerRegistration === null ? null : footerRegistration.options.id, 'run-status');
-equal('运行指示: 排在官方面板之后（order 10）', footerRegistration === null ? null : footerRegistration.options.order, 10);
-check('运行指示: 品牌行里已经没有 .dspro_run 了（迁移干净）',
-	fakeDocument.body.querySelectorAll('.dspro_run').length === 0);
-/**
- * 渲染那个槽位组件，返回 `{ texts, props, node }`。
- * 注意两层：槽位注册的渲染函数返回的仍是 `h(RunStatusChip, …)`（函数组件元素），
- * 要像 `renderNode` 那样再展开一层，才拿得到真正输出的那个 span。
- */
-const renderChip = () => {
-	if (footerRegistration === null) return { texts: [], props: null, node: null };
-	let node = footerRegistration.component({ wide: true });
-	for (let guard = 0; guard < 5 && node !== null && typeof node === 'object'
-		&& typeof node.type === 'function'; guard += 1) {
-		node = node.type(node.props ?? {});
-	}
-	if (node === null || typeof node !== 'object' || node.type === undefined) {
-		return { texts: [], props: null, node: null };
-	}
-	const texts = [];
-	// 必须按**文档顺序**收集（下面拿它拼文案做相等比较，顺序错了会拼出「!空闲」这种）。
-	const walk = (item) => {
-		if (typeof item === 'string') {
-			texts.push(item);
-			return;
-		}
-		if (Array.isArray(item)) {
-			for (const child of item) walk(child);
-			return;
-		}
-		if (item === null || typeof item !== 'object') return;
-		for (const child of item.children ?? []) walk(child);
-	};
-	walk(node.children ?? []);
-	return { texts, props: node.props ?? null, node };
-};
-const findRun = () => null; // 兼容下面几处旧断言：品牌行里已不再有 DOM chip
-const identityOf = (row) => row.querySelector('[class*="_brandIdentity"]');
-const runPoll = () => {
-	const entry = timers.intervals.find((item) => item !== null && item.ms === 5000);
-	return entry === undefined ? null : entry.fn;
-};
-statusRouteState.busy = true;
-statusRouteState.runningCount = 2;
-const poll = runPoll();
-check('运行指示: 找得到那个 5s 轮询', typeof poll === 'function');
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250)); // 等一次 read + 120ms 防抖
-const runNode = renderChip();
-check('运行指示: 忙时画出来', runNode.node !== null);
-equal('运行指示: 文案带计数', runNode.texts.join(''), '运行中 ×2');
-equal('运行指示: 忙态 data-state', runNode.props === null ? null : runNode.props['data-state'], 'running');
-equal('运行指示: 明细缺失时 title 回退成纯计数（旧 Host 兼容）', runNode.props === null ? null : runNode.props.title, '运行中 ×2');
-check('运行指示: 非交互（不给 tabIndex），但读屏有名字',
-	runNode.props !== null && runNode.props.tabIndex === undefined && typeof runNode.props['aria-label'] === 'string');
-// describeChip 纯函数：判据（尤其「未知不画」）直接测，不跟模块级 busyStore 的当前值较劲。
-const { describeChip } = clientModule.probe;
-// 这里还不能用 `bound` / `dict`（都在后面才定义）：直接查已注册的字典表。
-const chipDict = (dictionaries.get('dsh-setting-pro') ?? {}).zh ?? {};
-const chipT = (key) => (Object.prototype.hasOwnProperty.call(chipDict, key) ? chipDict[key] : 'MISSING:' + key);
-equal('运行指示判据: 还没读到过状态 → 不画（未知 ≠ 空闲）', describeChip(null, chipT), null);
-// ⚠️ React 18 的 useSyncExternalStore 要求 getSnapshot **返回缓存的同一引用**：
-// 每次新建对象会让它每帧判定「快照变了」→ 无限重渲染，生产环境表现为组件挂不上
-// （2026-10-19 用户实测「运行中没有出现在左下角」，而 427 项探针全绿 —— 假 React 不跑渲染循环）。
-const { busyStore } = clientModule.probe;
-const snapA = busyStore.get();
-const snapB = busyStore.get();
-check('运行指示: getSnapshot 连续两次返回同一引用（React 18 硬要求，否则挂不上）', snapA === snapB);
-busyStore.set({ busy: true, runningCount: 1, sessions: [], armed: false });
-const snapC = busyStore.get();
-check('运行指示: set() 之后换新快照（引用变化才是「变了」）', snapC !== snapA && snapC.busy === true);
-check('运行指示: 新快照立刻稳定（再读还是同一引用）', busyStore.get() === snapC);
-busyStore.set({ busy: false, runningCount: 0, sessions: [], armed: false });
-equal('运行指示判据: known=false 也不画（不猜一个「空闲」）',
-	describeChip({ busy: false, runningCount: 0, sessions: [], armed: false, known: false }, chipT), null);
-equal('运行指示判据: 忙且多个会话 → 带 ×N', describeChip({ busy: true, runningCount: 3, sessions: [], armed: false, known: true }, chipT).text, '运行中 ×3');
-equal('运行指示判据: 忙但只有一个会话 → 不写 ×1', describeChip({ busy: true, runningCount: 1, sessions: [], armed: false, known: true }, chipT).text, '运行中');
-equal('运行指示判据: 空闲 → 空闲', describeChip({ busy: false, runningCount: 0, sessions: [], armed: false, known: true }, chipT).text, '空闲');
-equal('运行指示判据: 已排程时 title 多一行', describeChip({ busy: false, runningCount: 0, sessions: [], armed: true, known: true }, chipT).title,
-	'当前没有会话在运行\n已排程：等所有会话空闲后重启 DSH');
-equal('运行指示判据: 无障碍名把换行换成「；」',
-	describeChip({ busy: false, runningCount: 0, sessions: [], armed: true, known: true }, chipT).aria,
-	'当前没有会话在运行；已排程：等所有会话空闲后重启 DSH');
-equal('运行指示判据: 明细缺标题时只留工作区',
-	describeChip({ busy: true, runningCount: 2, armed: false, known: true,
-		sessions: [{ workspace: '客厅', title: '修 bug' }, { workspace: '书房', title: '' }] }, chipT).title,
-	'运行中 ×2\n客厅 · 修 bug\n书房');
-check('运行指示: 不再往品牌行写 DOM（迁移到槽位后品牌行干净）',
-	fakeDocument.body.querySelectorAll('.dspro_run').length === 0);
-statusRouteState.busy = false;
-statusRouteState.runningCount = 0;
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250));
-// 用户要的语义（2026-10-17「没有运行中也给个提示」）：空闲**不撤掉**，换成灰色「空闲」。
-const idleNode = renderChip();
-check('运行指示: 空闲时仍然显示（不是消失）', idleNode.node !== null);
-equal('运行指示: 空闲态 data-state', idleNode.props === null ? null : idleNode.props['data-state'], 'idle');
-equal('运行指示: 空闲态文案', idleNode.texts.join(''), '空闲');
-equal('运行指示: 空闲态悬停', idleNode.props === null ? null : idleNode.props.title, '当前没有会话在运行');
-
-// —— 排程感叹号（2026-10-18 用户要求：排程重启时，在「运行中」后面加感叹号）——
-// 此刻是空闲态（busy=false / count=0 / sessions=[]），**只把 armed 翻成 true 再轮询**：
-// 这正是最容易踩的短路陷阱 —— 若 set() 只比 busy/count/sessions，这一帧会被判成「没变化」而丢弃，
-// 感叹号要等到别的东西变了才出现。
-statusRouteState.armed = true;
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250));
-const armedNode = renderChip();
-check('排程: 空闲但已排程时仍然画（不撤掉）', armedNode.node !== null);
-equal('排程: data-armed 标成 1', armedNode.props === null ? null : armedNode.props['data-armed'], '1');
-check('排程: 感叹号出现（单独 span，才能只给它 warn 色）', armedNode.texts.join('').includes('!'));
-equal('排程: 贪号前仍是「空闲」文案', armedNode.texts.join(''), '空闲!');
-check('排程: 悬停补一行说明（空闲态也要看得见排程）',
-	armedNode.props !== null && String(armedNode.props.title).includes('已排程'));
-equal('排程: 读屏名字里也有排程说明（换行换成「；」）',
-	armedNode.props === null ? null : String(armedNode.props['aria-label']).includes('已排程'), true);
-// 忙时 + 排程：感叹号与计数共存，悬停既有明细也有排程行
-statusRouteState.busy = true;
-statusRouteState.runningCount = 2;
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250));
-const busyArmed = renderChip();
-equal('排程: 忙时文案仍是运行中 ×2 加感叹号', busyArmed.texts.join(''), '运行中 ×2!');
-equal('排程: 忙时 data-state 仍是 running', busyArmed.props === null ? null : busyArmed.props['data-state'], 'running');
-// 取消排程：只翻 armed 回 false，感叹号必须立刻消失（同样不能被短路吞掉）
-statusRouteState.armed = false;
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250));
-const disarmed = renderChip();
-check('排程: 取消后感叹号移除（不是留着当装饰）', !disarmed.texts.join('').includes('!'));
-equal('排程: 取消后 data-armed 归 0', disarmed.props === null ? null : disarmed.props['data-armed'], '0');
-check('排程: 感叹号用 warn 主题 token（不写死色值）',
-	clientSource.includes("color:var(--dsw-alias-state-warn-primary)") && !/\.dspro_runBang\{[^}]*#[0-9a-f]{3,6}/i.test(clientSource));
-
-// 悬停明细：带工作区/会话标题
-statusRouteState.busy = true;
-statusRouteState.runningCount = 2;
-statusRouteState.sessions = [
-	{ sessionId: 's1', workspace: '客厅', title: '修登录 bug' },
-	{ sessionId: 's2', workspace: '书房', title: '' }
-];
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250));
-equal('运行指示: 悬停拼出「工作区 · 会话」明细（缺项自动省）',
-	renderChip().props === null ? null : renderChip().props.title,
-	'运行中 ×2\n客厅 · 修登录 bug\n书房');
-// busy/count 没变、只有标题变 → 签名要认，chip 得跟上
-statusRouteState.sessions = [{ sessionId: 's1', workspace: '客厅', title: '改名了' }, { sessionId: 's2', workspace: '书房', title: '' }];
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250));
-equal('运行指示: 标题变了（计数没变）悬停也跟上',
-	renderChip().props === null ? null : renderChip().props.title,
-	'运行中 ×2\n客厅 · 改名了\n书房');
-equal('运行指示: 忙态 data-state 切回 running', renderChip().props === null ? null : renderChip().props['data-state'], 'running');
-statusRouteState.busy = false;
-statusRouteState.runningCount = 0;
-statusRouteState.sessions = [];
-if (typeof poll === 'function') poll();
-await new Promise((resolve) => setTimeout(resolve, 250));
-equal('运行指示: 再回空闲（带过明细后也能干净切回）', renderChip().props === null ? null : renderChip().props['data-state'], 'idle');
 
 // 清空名字 → 占位撤掉，官方 logo 回来
 machineRouteState.name = '';
@@ -1161,14 +995,10 @@ window.dispatchEvent(new CustomEvent(MACHINE_EVENT, { detail: { name: '' } }));
 check('品牌区: 清空名字后两个占位都被卸载', brandEntries().length === 2 && brandEntries().every((entry) => entry.disposed));
 check('品牌区: 卸载后不再插 DOM 兜底', findLabel() === null);
 
-statusRouteState.busy = true;
-statusRouteState.runningCount = 1;
-if (typeof runPoll() === 'function') runPoll()();
-await new Promise((resolve) => setTimeout(resolve, 250));
-const beforeDispose = renderChip().node;
+// ⚠️ 这一行不能省：下一段（DOM 兜底）会换掉 `globalThis.document`，
+// 而第一轮 apply 起的 30s 对齐定时器仍在跑 —— 不先收摊，它就会把节点重新插进新的假 DOM，
+// 让「兜底: 卸载后节点撤掉」变成假失败（2026-10-19 删「运行中」代码时踩过一次）。
 for (const disposer of clientDisposers) disposer();
-check('运行指示: 卸载前确实在显示（这条断言才有意义）', beforeDispose !== null);
-check('运行指示: 卸载后撤掉', findRun() === null);
 check('卸载: 全部 effect 都能安全收摊', true);
 
 // —— DOM 兜底那条路：让品牌占位失败，名字应退回 logo 下面 ——
